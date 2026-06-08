@@ -144,7 +144,7 @@ function buildSeries(refData: RefPoint[], label: string): ExtendedDataset[] {
         y: mapValueToChart(label, raw),
         yOriginal: raw,
       };
-    }).filter((point): point is { x: number; y: number; yOriginal: number } => point != null);
+    }).filter((point): point is { x: typeof REF_WEEKS[number]; y: number; yOriginal: number } => point != null);
 
     return {
       label: `${label} ${percentile.replace("p", "")}th`,
@@ -159,7 +159,6 @@ function buildSeries(refData: RefPoint[], label: string): ExtendedDataset[] {
     } as ExtendedDataset;
   });
 }
-
 // FIX #7: Use type predicate in filter so non-null assertion is unnecessary
 function buildPatientDataset(
   label: string,
@@ -388,8 +387,8 @@ const fentonBackgroundPlugin = {
 };
 
 export default function FentonChart({ gender, patientData }: FentonChartProps) {
-  // FIX #5: Warn (dev-only) when gender is unset; use female as safe fallback but make it explicit.
-  if (process.env.NODE_ENV !== "production" && gender === "") {
+  // FIX #5: Warn (dev-only) when gender is unset
+  if (import.meta.env.DEV && gender === "") {
     console.warn(
       "[FentonChart] gender prop is empty. Reference curves will not be rendered. " +
       "Pass 'male' or 'female' to display Fenton reference data."
@@ -512,7 +511,7 @@ export default function FentonChart({ gender, patientData }: FentonChartProps) {
           display: true,
           text: "Gestational age (weeks)",
           color: "#475569",
-          font: { size: 12, weight: "600" },
+          font: { size: 12, weight: 600 },
         },
         ticks: {
           stepSize: 2,

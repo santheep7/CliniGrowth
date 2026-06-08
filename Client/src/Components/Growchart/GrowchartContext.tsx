@@ -8,7 +8,7 @@ export interface Visit {
   height: string;
   weight: string;
   headCirc: string;
-  gaWeeks: string;
+
 }
 
 export interface PatientData {
@@ -31,7 +31,7 @@ export interface HomeFormState {
 const STORAGE_KEY_PATIENT = "clinigrowth_patient";
 const STORAGE_KEY_HOMEFORM = "clinigrowth_homeform";
 
-function newVisit(): Visit { return { id: crypto.randomUUID(), date: "", height: "", weight: "", headCirc: "", gaWeeks: "" }; }
+function newVisit(): Visit { return { id: crypto.randomUUID(), date: "", height: "", weight: "", headCirc: "" }; }
 const DEFAULT_VISIT: Visit = newVisit();
 
 const DEFAULT_FORM: HomeFormState = {
@@ -67,9 +67,9 @@ interface GrowchartContextType {
 
 const GrowchartContext = createContext<GrowchartContextType>({
   patient: null,
-  setPatient: () => {},
+  setPatient: () => { },
   homeForm: DEFAULT_FORM,
-  setHomeForm: () => {},
+  setHomeForm: () => { },
 });
 
 export function GrowchartProvider({ children }: { children: ReactNode }) {
