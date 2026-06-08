@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { useGrowchart, type HomeFormState } from "./GrowchartContext";
+import { gsap } from "gsap";
+import { useGrowchart } from "./GrowchartContext";
 import FentonChart from "./FentonChart";
 import {
   FENTON_WEIGHT_BOYS, FENTON_WEIGHT_GIRLS,
@@ -11,10 +12,30 @@ import {
   type RefPoint,
 } from "./referenceData";
 
+// ─── Inject animation CSS once (prevents React inline-style from fighting GSAP) ──
+if (typeof document !== "undefined" && !document.getElementById("growchart-anim-css")) {
+  const tag = document.createElement("style");
+  tag.id = "growchart-anim-css";
+  tag.textContent = `
+    .gc-visit-card {
+      will-change: transform, opacity;
+    }
+    .gc-form-card {
+      will-change: transform, opacity;
+    }
+    .gc-chart-card {
+      will-change: transform, opacity;
+    }
+    .gc-badge {
+      will-change: transform, opacity;
+    }
+  `;
+  document.head.appendChild(tag);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Gender = "male" | "female" | "";
 
-// REMOVED: gaWeeks field — GA is always auto-calculated from DOB + GA at birth + visit date
 interface Visit {
   id: string;
   date: string;
@@ -39,7 +60,6 @@ interface ChartPoint {
   hc_p3: number | null; hc_p15: number | null; hc_p50: number | null; hc_p85: number | null; hc_p97: number | null;
   w_p3: number | null; w_p15: number | null; w_p50: number | null; w_p85: number | null; w_p97: number | null;
 }
-
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDate(iso: string) {
@@ -71,8 +91,6 @@ function cgaWeek(dob: string, gaAtBirth: number, visitDate: string): number {
   return gaAtBirth + postnatalWeeks;
 }
 
-// REMOVED: cgaWeekDisplay — no longer needed since the input field is gone
-
 function buildChartData(visits: Visit[], dob: string, gaAtBirth: number, gender: Gender): ChartPoint[] {
   const male = gender !== "female";
   const lRef = male ? FENTON_LENGTH_BOYS : FENTON_LENGTH_GIRLS;
@@ -96,7 +114,6 @@ function buildChartData(visits: Visit[], dob: string, gaAtBirth: number, gender:
   const visitPoints: ChartPoint[] = visits
     .filter(v => v.date && dob)
     .map(v => {
-      // GA is always auto-calculated — no manual gaWeeks override
       const cga = cgaWeek(dob, gaAtBirth, v.date);
       const l = interpolate(lRef, cga);
       const hc = interpolate(hcRef, cga);
@@ -113,8 +130,109 @@ function buildChartData(visits: Visit[], dob: string, gaAtBirth: number, gender:
       };
     });
 
-  const merged = [...refPoints, ...visitPoints];
-  return merged.sort((a, b) => a.week - b.week);
+  return [...refPoints, ...visitPoints].sort((a, b) => a.week - b.week);
+}
+
+// ─── VisitCard — own component so useLayoutEffect fires after mount ───────────
+interface VisitCardProps {
+  v: Visit;
+  idx: number;
+  isNew: boolean;
+  canRemove: boolean;
+  dob: string;
+  gaAtBirth: string;
+  errors: VisitErrors | undefined;
+  onRemove: (id: string) => void;
+  onUpdate: (id: string, field: keyof Omit<Visit, "id">, value: string) => void;
+  onAnimateOut: (id: string, el: HTMLDivElement) => void;
+}
+
+function VisitCard({ v, idx, isNew, canRemove, dob, gaAtBirth, errors, onRemove, onUpdate, onAnimateOut }: VisitCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Animate in when this card first mounts
+  useEffect(() => {
+    if (isNew && cardRef.current) {
+      gsap.fromTo(
+        cardRef.current,
+        { opacity: 0, y: 22, scale: 0.94 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "back.out(1.6)", clearProps: "transform" }
+      );
+    } else if (cardRef.current) {
+      // Make sure existing cards are visible (initial load)
+      gsap.set(cardRef.current, { opacity: 1, y: 0, scale: 1 });
+    }
+  }, []); // runs once on mount
+
+  function handleRemove() {
+    if (cardRef.current) onAnimateOut(v.id, cardRef.current);
+    else onRemove(v.id);
+  }
+
+  return (
+    <div
+      ref={cardRef}
+      className="gc-visit-card"
+      data-visit-id={v.id}
+      style={s.visitCard}
+    >
+      <div style={s.visitCardHeader}>
+        <span style={s.visitLabel}>Visit {idx + 1}</span>
+        {canRemove && (
+          <button type="button" onClick={handleRemove} style={s.removeBtn}>✕</button>
+        )}
+      </div>
+
+      <div style={s.field}>
+        <label style={s.label}>Date</label>
+        <DatePicker
+          selected={v.date ? new Date(v.date) : null}
+          onChange={(date: Date | null) =>
+            onUpdate(v.id, "date", date ? date.toISOString().split("T")[0] : "")
+          }
+          dateFormat="dd MMM yyyy"
+          placeholderText="Select date"
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"
+          isClearable
+          todayButton="Today"
+          minDate={dob ? new Date(dob) : undefined}
+          maxDate={new Date()}
+          customInput={<input style={s.input} />}
+        />
+      </div>
+
+      {v.date && dob && gaAtBirth && (
+        <div style={s.field}>
+          <label style={s.label}>Corrected GA (auto)</label>
+          <div style={s.cgaDisplay}>
+            {cgaWeek(dob, parseFloat(gaAtBirth) || 40, v.date).toFixed(1)}w
+          </div>
+        </div>
+      )}
+
+      <div style={s.row}>
+        <div style={{ ...s.field, flex: 1 }}>
+          <label style={s.label}>Length (cm)</label>
+          <input style={s.input} type="number" placeholder="cm" value={v.height}
+            onChange={e => onUpdate(v.id, "height", e.target.value)} />
+        </div>
+        <div style={{ ...s.field, flex: 1 }}>
+          <label style={s.label}>Weight (kg)</label>
+          <input style={s.input} type="number" placeholder="kg" value={v.weight}
+            onChange={e => onUpdate(v.id, "weight", e.target.value)} step="0.01" />
+        </div>
+      </div>
+
+      <div style={s.field}>
+        <label style={s.label}>Head Circ. (cm)</label>
+        {errors?.headCirc && <span style={s.errorText}>{errors.headCirc}</span>}
+        <input style={s.input} type="number" placeholder="cm" value={v.headCirc}
+          onChange={e => onUpdate(v.id, "headCirc", e.target.value)} />
+      </div>
+    </div>
+  );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -126,6 +244,9 @@ export default function GrowChart() {
   const { patientName, dob, gender, gaAtBirth, plotted } = homeForm;
   const visits = homeForm.visits;
 
+  // Track which visit id was just added so VisitCard knows to animate in
+  const [newVisitId, setNewVisitId] = useState<string | null>(null);
+
   const [chartData, setChartData] = useState<ChartPoint[]>(() => {
     if (!homeForm.plotted || !homeForm.dob) return [];
     const ga = parseFloat(homeForm.gaAtBirth) || 40;
@@ -134,16 +255,77 @@ export default function GrowChart() {
 
   const [visitErrors, setVisitErrors] = useState<Record<string, VisitErrors>>({});
 
+  // ─── GSAP refs ──────────────────────────────────────────────────────────────
+  const pageRef = useRef<HTMLDivElement>(null);
+  const formCardRef = useRef<HTMLDivElement>(null);
+  const chartCardRef = useRef<HTMLDivElement>(null);
+  const patientBadgeRef = useRef<HTMLDivElement>(null);
+  const plotBtnRef = useRef<HTMLButtonElement>(null);
+
+  // ── Page mount animation ────────────────────────────────────────────────────
+  useEffect(() => {
+    const ctx = gsap.context(() => {
+      gsap.from(formCardRef.current, {
+        x: -40, opacity: 0, duration: 0.7, ease: "power3.out",
+      });
+      gsap.from(chartCardRef.current, {
+        x: 40, opacity: 0, duration: 0.7, ease: "power3.out", delay: 0.15,
+      });
+    }, pageRef);
+    return () => ctx.revert();
+  }, []);
+
+  // ── Patient badge slide-in ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (plotted && patientBadgeRef.current) {
+      gsap.fromTo(
+        patientBadgeRef.current,
+        { y: -12, opacity: 0, scale: 0.95 },
+        { y: 0, opacity: 1, scale: 1, duration: 0.45, ease: "back.out(1.7)" }
+      );
+    }
+  }, [plotted]);
+
+  // ── Chart card reveal ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (plotted && chartCardRef.current) {
+      gsap.fromTo(
+        chartCardRef.current,
+        { opacity: 0.4, scale: 0.98, y: 10 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.55, ease: "power2.out" }
+      );
+    }
+  }, [plotted, chartData]);
+
+  // ─── Visit management ───────────────────────────────────────────────────────
   function addVisit() {
+    const id = newId();
+    setNewVisitId(id);
     setHomeForm(prev => ({
       ...prev,
-      // REMOVED: gaWeeks from new visit template
-      visits: [...prev.visits, { id: newId(), date: "", height: "", weight: "", headCirc: "" }],
+      visits: [...prev.visits, { id, date: "", height: "", weight: "", headCirc: "" }],
     }));
   }
-  function removeVisit(id: string) {
-    setHomeForm(prev => ({ ...prev, visits: prev.visits.filter(v => v.id !== id) }));
+
+  function handleAnimateOut(id: string, el: HTMLDivElement) {
+    // Lock the element's current height so collapse is smooth
+    const h = el.offsetHeight;
+    gsap.set(el, { height: h, overflow: "hidden" });
+    gsap.to(el, {
+      opacity: 0,
+      x: -24,
+      height: 0,
+      paddingTop: 0,
+      paddingBottom: 0,
+      marginBottom: 0,
+      duration: 0.32,
+      ease: "power2.in",
+      onComplete: () => {
+        setHomeForm(prev => ({ ...prev, visits: prev.visits.filter(v => v.id !== id) }));
+      },
+    });
   }
+
   function updateVisit(id: string, field: keyof Omit<Visit, "id">, value: string) {
     setHomeForm(prev => ({
       ...prev,
@@ -154,81 +336,124 @@ export default function GrowChart() {
     if (value && field === "headCirc" && num > 55) err = "Max 55 cm";
     setVisitErrors(prev => ({ ...prev, [id]: { ...prev[id], [field]: err } }));
   }
+
   function handlePlot(e: React.FormEvent) {
     e.preventDefault();
     const hasErrors = Object.values(visitErrors).some(errs => errs && Object.values(errs).some(Boolean));
     if (hasErrors) return;
+
+    if (plotBtnRef.current) {
+      gsap.timeline()
+        .to(plotBtnRef.current, { scale: 0.93, duration: 0.1, ease: "power1.in" })
+        .to(plotBtnRef.current, { scale: 1, duration: 0.25, ease: "elastic.out(1.2, 0.5)" });
+    }
+
     const ga = parseFloat(gaAtBirth) || 40;
     const data = buildChartData(visits, dob, ga, gender);
     setChartData(data);
     setHomeForm(prev => ({ ...prev, plotted: true }));
     setPatient({ patientName, dob, gender, gaAtBirth, visits });
   }
+
   function handleReset() {
+    if (formCardRef.current) {
+      gsap.timeline()
+        .to(formCardRef.current, { x: -6, duration: 0.07 })
+        .to(formCardRef.current, { x: 6, duration: 0.07 })
+        .to(formCardRef.current, { x: -4, duration: 0.06 })
+        .to(formCardRef.current, { x: 0, duration: 0.06 })
+        .then(() => doReset());
+    } else {
+      doReset();
+    }
+  }
+
+  function doReset() {
     setHomeForm({
       patientName: "", dob: "", gender: "", gaAtBirth: "",
-      // REMOVED: gaWeeks from reset template
       visits: [{ id: newId(), date: "", height: "", weight: "", headCirc: "" }],
       plotted: false,
     });
     setChartData([]);
     setVisitErrors({});
+    setNewVisitId(null);
+  }
+
+  function handleGenderClick(g: "male" | "female") {
+    setHomeForm(prev => ({ ...prev, gender: g }));
+    const btn = document.querySelector<HTMLElement>(`[data-gender="${g}"]`);
+    if (btn) {
+      gsap.timeline()
+        .to(btn, { scale: 0.92, duration: 0.08 })
+        .to(btn, { scale: 1.06, duration: 0.15, ease: "power2.out" })
+        .to(btn, { scale: 1, duration: 0.12, ease: "power1.in" });
+    }
   }
 
   return (
-    <div style={s.page}>
+    <div ref={pageRef} style={s.page}>
       <div style={s.wrapper}>
         <div style={s.header}>
           <div>
             {plotted && patientName && (
-              <div style={s.patientBadge}>
+              <div ref={patientBadgeRef} style={s.patientBadge}>
                 <span style={s.patientName}>
                   {patientName}
-                  {gender && <span style={{ marginLeft: 6, color: gender === "male" ? "#3b82f6" : "#ec4899" }}>{gender === "male" ? "♂" : "♀"}</span>}
+                  {gender && (
+                    <span style={{ marginLeft: 6, color: gender === "male" ? "#3b82f6" : "#ec4899" }}>
+                      {gender === "male" ? "♂" : "♀"}
+                    </span>
+                  )}
                 </span>
-                {dob && <span style={s.patientDob}>DOB: {formatDate(dob)}{gaAtBirth ? ` · GA ${gaAtBirth}w` : ""}</span>}
+                {dob && (
+                  <span style={s.patientDob}>
+                    DOB: {formatDate(dob)}{gaAtBirth ? ` · GA ${gaAtBirth}w` : ""}
+                  </span>
+                )}
               </div>
             )}
           </div>
         </div>
 
         <div style={s.body}>
-          <div style={s.formCard}>
+          {/* ── Form card ── */}
+          <div ref={formCardRef} style={s.formCard}>
             <h2 style={s.sectionTitle}>Patient Info</h2>
+
             <div style={s.field}>
               <label style={s.label}>Patient Name</label>
               <input style={s.input} type="text" placeholder="Full name" value={patientName}
                 onChange={e => setHomeForm(prev => ({ ...prev, patientName: e.target.value }))} />
             </div>
+
             <div style={s.field}>
               <label style={s.label}>Date of Birth</label>
               <DatePicker
                 selected={dob ? new Date(dob) : null}
-                onChange={(date: Date | null) => setHomeForm(prev => ({ ...prev, dob: date ? date.toISOString().split("T")[0] : "" }))}
-                dateFormat="dd MMM yyyy"
-                placeholderText="Select date"
-                showMonthDropdown
-                showYearDropdown
-                dropdownMode="select"
-                yearDropdownItemNumber={10}
-                scrollableYearDropdown
-                maxDate={new Date()}
-                isClearable
-                todayButton="Today"
+                onChange={(date: Date | null) =>
+                  setHomeForm(prev => ({ ...prev, dob: date ? date.toISOString().split("T")[0] : "" }))
+                }
+                dateFormat="dd MMM yyyy" placeholderText="Select date"
+                showMonthDropdown showYearDropdown dropdownMode="select"
+                yearDropdownItemNumber={10} scrollableYearDropdown
+                maxDate={new Date()} isClearable todayButton="Today"
                 customInput={<input style={s.input} />}
               />
             </div>
+
             <div style={s.field}>
               <label style={s.label}>GA at Birth (weeks)</label>
               <input style={s.input} type="number" placeholder="e.g. 28" value={gaAtBirth}
                 onChange={e => setHomeForm(prev => ({ ...prev, gaAtBirth: e.target.value }))}
                 min="22" max="44" step="1" />
             </div>
+
             <div style={s.field}>
               <label style={s.label}>Gender</label>
               <div style={s.genderRow}>
                 {(["male", "female"] as const).map(g => (
-                  <button key={g} type="button" onClick={() => setHomeForm(prev => ({ ...prev, gender: g }))}
+                  <button key={g} type="button" data-gender={g}
+                    onClick={() => handleGenderClick(g)}
                     style={{ ...s.genderBtn, ...(gender === g ? (g === "male" ? s.gMale : s.gFemale) : {}) }}>
                     {g === "male" ? "♂ Male" : "♀ Female"}
                   </button>
@@ -246,102 +471,56 @@ export default function GrowChart() {
             <form onSubmit={handlePlot}>
               <div style={s.visitList}>
                 {homeForm.visits.map((v, idx) => (
-                  <div key={v.id} style={s.visitCard}>
-                    <div style={s.visitCardHeader}>
-                      <span style={s.visitLabel}>Visit {idx + 1}</span>
-                      {visits.length > 1 && (
-                        <button type="button" onClick={() => removeVisit(v.id)} style={s.removeBtn}>✕</button>
-                      )}
-                    </div>
-
-                    <div style={s.field}>
-                      <label style={s.label}>Date</label>
-                      <DatePicker
-                        selected={v.date ? new Date(v.date) : null}
-                        onChange={(date: Date | null) => updateVisit(v.id, "date", date ? date.toISOString().split("T")[0] : "")}
-                        dateFormat="dd MMM yyyy"
-                        placeholderText="Select date"
-                        showMonthDropdown
-                        showYearDropdown
-                        dropdownMode="select"
-                        isClearable
-                        todayButton="Today"
-                        minDate={dob ? new Date(dob) : undefined}
-                        maxDate={new Date()}
-                        customInput={<input style={s.input} />}
-                      />
-                    </div>
-
-                    {/* REMOVED: GA at Visit (weeks) input — auto-calculated from DOB + GA at birth + visit date */}
-
-                    {/* Optional: show the computed CGA as read-only info when date is set */}
-                    {v.date && dob && gaAtBirth && (
-                      <div style={s.field}>
-                        <label style={s.label}>Corrected GA (auto)</label>
-                        <div style={s.cgaDisplay}>
-                          {cgaWeek(dob, parseFloat(gaAtBirth) || 40, v.date).toFixed(1)}w
-                        </div>
-                      </div>
-                    )}
-
-                    <div style={s.row}>
-                      <div style={{ ...s.field, flex: 1 }}>
-                        <label style={s.label}>Length (cm)</label>
-                        <input style={s.input} type="number" placeholder="cm" value={v.height}
-                          onChange={e => updateVisit(v.id, "height", e.target.value)} />
-                      </div>
-                      <div style={{ ...s.field, flex: 1 }}>
-                        <label style={s.label}>Weight (kg)</label>
-                        <input style={s.input} type="number" placeholder="kg" value={v.weight}
-                          onChange={e => updateVisit(v.id, "weight", e.target.value)} step="0.01" />
-                      </div>
-                    </div>
-
-                    <div style={s.field}>
-                      <label style={s.label}>Head Circ. (cm)</label>
-                      {visitErrors[v.id]?.headCirc && (
-                        <span style={s.errorText}>{visitErrors[v.id].headCirc}</span>
-                      )}
-                      <input style={s.input} type="number" placeholder="cm" value={v.headCirc}
-                        onChange={e => updateVisit(v.id, "headCirc", e.target.value)} />
-                    </div>
-                  </div>
+                  <VisitCard
+                    key={v.id}
+                    v={v}
+                    idx={idx}
+                    isNew={v.id === newVisitId}
+                    canRemove={visits.length > 1}
+                    dob={dob}
+                    gaAtBirth={gaAtBirth}
+                    errors={visitErrors[v.id]}
+                    onRemove={id => setHomeForm(prev => ({ ...prev, visits: prev.visits.filter(x => x.id !== id) }))}
+                    onUpdate={updateVisit}
+                    onAnimateOut={handleAnimateOut}
+                  />
                 ))}
               </div>
+
               <div style={s.btnRow}>
-                <button type="submit" style={s.btnPrimary}>Plot Chart</button>
+                <button ref={plotBtnRef} type="submit" style={s.btnPrimary}>Plot Chart</button>
                 <button type="button" onClick={handleReset} style={s.btnSecondary}>Reset</button>
               </div>
             </form>
           </div>
 
-          <div style={s.chartCard}>
+          {/* ── Chart card ── */}
+          <div ref={chartCardRef} style={s.chartCard}>
             {plotted && (
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-                <button onClick={() => navigate("/detail")} style={s.detailBtn}>
+                <button
+                  onClick={() => navigate("/detail")}
+                  style={s.detailBtn}
+                  onMouseEnter={e => gsap.to(e.currentTarget, { x: 3, duration: 0.2 })}
+                  onMouseLeave={e => gsap.to(e.currentTarget, { x: 0, duration: 0.2 })}
+                >
                   View Individual Charts →
                 </button>
               </div>
             )}
-            {!plotted ? <Placeholder /> : (() => {
+            {!plotted ? (
+              <Placeholder />
+            ) : (() => {
               const patientPts = chartData
                 .filter(d => d.height != null || d.weight != null || d.headCirc != null)
-                .map(d => ({
-                  week: d.week,
-                  height: d.height,
-                  weight: d.weight,
-                  headCirc: d.headCirc,
-                  label: d.weekLabel,
-                }));
+                .map(d => ({ week: d.week, height: d.height, weight: d.weight, headCirc: d.headCirc, label: d.weekLabel }));
               return (
                 <div>
                   <div style={{ marginBottom: 16 }}>
                     <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
-                      Fenton Preterm Growth Chart - {gender === "male" ? "Boys" : "Girls"}
+                      Fenton Preterm Growth Chart – {gender === "male" ? "Boys" : "Girls"}
                     </h3>
-                    <p style={{ margin: 0, fontSize: 12, color: "#475569" }}>
-                      M.O.S.C. MEDICAL COLLEGE HOSPITAL · DEPARTMENT OF NEONATOLOGY
-                    </p>
+
                   </div>
                   <FentonChart gender={gender} patientData={patientPts} />
                 </div>
@@ -355,8 +534,17 @@ export default function GrowChart() {
 }
 
 function Placeholder() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) {
+      gsap.fromTo(ref.current,
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }
+      );
+    }
+  }, []);
   return (
-    <div style={s.placeholder}>
+    <div ref={ref} style={s.placeholder}>
       <p style={s.placeholderText}>Enter Patient Parameters to view Fenton Grid markings</p>
     </div>
   );
