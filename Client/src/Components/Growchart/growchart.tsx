@@ -520,7 +520,7 @@ export default function GrowChart() {
                     <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
                       Fenton Preterm Growth Chart – {gender === "male" ? "Boys" : "Girls"}
                     </h3>
-
+                  
                   </div>
                   <FentonChart gender={gender} patientData={patientPts} />
                 </div>

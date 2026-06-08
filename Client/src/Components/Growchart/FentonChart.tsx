@@ -439,26 +439,49 @@ export default function FentonChart({ gender, patientData }: FentonChartProps) {
     const weightSets = buildSeries(wRef, "Weight");
 
     // FIX #7: Use type predicates in filter so no non-null assertions needed
-    const patientLength = buildPatientDataset(
-      "Patient Length",
-      patientData
-        .filter((p): p is PatientPoint & { height: number } => p.height != null)
-        .map(p => ({ x: p.week, y: p.height, label: p.label }))
-    );
-    const patientHead = buildPatientDataset(
-      "Patient Head Circumference",
-      patientData
-        .filter((p): p is PatientPoint & { headCirc: number } => p.headCirc != null)
-        .map(p => ({ x: p.week, y: p.headCirc, label: p.label })),
-      [6, 4]
-    );
-    const patientWeight = buildPatientDataset(
-      "Patient Weight",
-      patientData
-        .filter((p): p is PatientPoint & { weight: number } => p.weight != null)
-        .map(p => ({ x: p.week, y: p.weight, label: p.label })),
-      [2, 2]
-    );
+    const patientLength = {
+      ...buildPatientDataset(
+        "Patient Length",
+        patientData
+          .filter((p): p is PatientPoint & { height: number } => p.height != null)
+          .map(p => ({ x: p.week, y: p.height, label: p.label })),
+        [6, 4] // dashed line
+      ),
+      borderColor: "#16a34a",
+      backgroundColor: "#16a34a",
+      pointBackgroundColor: "#16a34a",
+      borderWidth: 4,
+      pointRadius: 7,
+      pointHoverRadius: 9,
+    };
+    const patientHead = {
+      ...buildPatientDataset(
+        "Patient Head Circumference",
+        patientData
+          .filter((p): p is PatientPoint & { headCirc: number } => p.headCirc != null)
+          .map(p => ({ x: p.week, y: p.headCirc, label: p.label })),
+        [6, 4]
+      ),
+      borderColor: "#dc2626",
+      backgroundColor: "#dc2626",
+      pointBackgroundColor: "#dc2626",
+      borderWidth: 4,
+      pointRadius: 7,
+    };
+    const patientWeight = {
+      ...buildPatientDataset(
+        "Patient Weight",
+        patientData
+          .filter((p): p is PatientPoint & { weight: number } => p.weight != null)
+          .map(p => ({ x: p.week, y: p.weight, label: p.label })),
+        [6, 4]
+      ),
+      borderColor: "#ebf709ff",
+      backgroundColor: "#e9f817ff",
+      pointBackgroundColor: "#e6f519ff",
+      borderWidth: 4,
+      pointRadius: 7,
+    };
 
     // FIX #6: Cast helper dataset as ExtendedDataset to satisfy yAxisID typing
     const rightAxisHelper: ExtendedDataset = {

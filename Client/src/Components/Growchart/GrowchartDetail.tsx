@@ -1,10 +1,21 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
 import { gsap } from "gsap";
-import { useGrowchart, type HomeFormState } from "./GrowchartContext";
-import FentonChart from "./FentonChart";
+import { useGrowchart } from "./GrowchartContext";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip,
+  Legend,
+  Filler,
+  Title,
+  type ChartData,
+  type ChartOptions,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
 import {
   FENTON_WEIGHT_BOYS, FENTON_WEIGHT_GIRLS,
   FENTON_LENGTH_BOYS, FENTON_LENGTH_GIRLS,
@@ -12,594 +23,616 @@ import {
   type RefPoint,
 } from "./referenceData";
 
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler, Title);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Gender = "male" | "female" | "";
-
-interface Visit {
-  id: string;
-  date: string;
-  height: string;
-  weight: string;
-  headCirc: string;
-}
-
-interface VisitErrors {
-  height?: string;
-  weight?: string;
-  headCirc?: string;
-}
+type Metric = "height" | "weight" | "headCirc";
+type GenderView = "both" | "male" | "female";
 
 interface ChartPoint {
   week: number;
   weekLabel: string;
-  height: number | null;
-  weight: number | null;
-  headCirc: number | null;
-  l_p3: number | null; l_p15: number | null; l_p50: number | null; l_p85: number | null; l_p97: number | null;
-  hc_p3: number | null; hc_p15: number | null; hc_p50: number | null; hc_p85: number | null; hc_p97: number | null;
-  w_p3: number | null; w_p15: number | null; w_p50: number | null; w_p85: number | null; w_p97: number | null;
+  patient: number | null;
+  boys: Record<"p3" | "p15" | "p50" | "p85" | "p97", number | null>;
+  girls: Record<"p3" | "p15" | "p50" | "p85" | "p97", number | null>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
+  if (!data || !data.length) return null;
+  const sorted = [...data].sort((a, b) => a.x - b.x);
+  if (x <= sorted[0].x) return sorted[0];
+  if (x >= sorted[sorted.length - 1].x) {
+    const maxPt = sorted[sorted.length - 1];
+    const weeksPast = x - maxPt.x;
+    const factor = 1 + (weeksPast / 250) * 0.7;
+    return {
+      p3: parseFloat((maxPt.p3 * factor).toFixed(2)),
+      p15: parseFloat((maxPt.p15 * factor).toFixed(2)),
+      p50: parseFloat((maxPt.p50 * factor).toFixed(2)),
+      p85: parseFloat((maxPt.p85 * factor).toFixed(2)),
+      p97: parseFloat((maxPt.p97 * factor).toFixed(2)),
+    };
+  }
+  const lo = sorted.filter(d => d.x <= x).pop()!;
+  const hi = sorted.find(d => d.x > x)!;
+  const t = (x - lo.x) / (hi.x - lo.x);
+  const l = (a: number, b: number) => parseFloat((a + t * (b - a)).toFixed(2));
+  return { p3: l(lo.p3, hi.p3), p15: l(lo.p15, hi.p15), p50: l(lo.p50, hi.p50), p85: l(lo.p85, hi.p85), p97: l(lo.p97, hi.p97) };
+}
+
+function cgaWeek(dob: string, gaAtBirth: number, visitDate: string): number {
+  const dobMs = new Date(dob).getTime();
+  const visitMs = new Date(visitDate).getTime();
+  if (isNaN(dobMs) || isNaN(visitMs)) return gaAtBirth;
+  return gaAtBirth + (visitMs - dobMs) / (7 * 24 * 3600 * 1000);
+}
+
 function formatDate(iso: string) {
   if (!iso) return "";
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
 }
 
-function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
-  if (!data.length) return null;
-  const sorted = [...data].sort((a, b) => a.x - b.x);
-  if (x <= sorted[0].x) return sorted[0];
-  if (x >= sorted[sorted.length - 1].x) return sorted[sorted.length - 1];
-  const lo = sorted.filter(d => d.x <= x).pop()!;
-  const hi = sorted.find(d => d.x > x)!;
-  const t = (x - lo.x) / (hi.x - lo.x);
-  const lerp = (a: number, b: number) => parseFloat((a + t * (b - a)).toFixed(2));
-  return {
-    p3: lerp(lo.p3, hi.p3),
-    p15: lerp(lo.p15, hi.p15),
-    p50: lerp(lo.p50, hi.p50),
-    p85: lerp(lo.p85, hi.p85),
-    p97: lerp(lo.p97, hi.p97),
-  };
-}
+function ceilTo(v: number, step: number) { return Math.ceil(v / step) * step; }
 
-function cgaWeek(dob: string, gaAtBirth: number, visitDate: string): number {
-  const msPerWeek = 7 * 24 * 3600 * 1000;
-  const postnatalWeeks = (new Date(visitDate).getTime() - new Date(dob).getTime()) / msPerWeek;
-  return gaAtBirth + postnatalWeeks;
-}
+function buildData(
+  visits: { date: string; height: string; weight: string; headCirc: string }[],
+  dob: string, gaAtBirth: number, metric: Metric
+): ChartPoint[] {
+  const bRef = metric === "height" ? FENTON_LENGTH_BOYS : metric === "weight" ? FENTON_WEIGHT_BOYS : FENTON_HC_BOYS;
+  const gRef = metric === "height" ? FENTON_LENGTH_GIRLS : metric === "weight" ? FENTON_WEIGHT_GIRLS : FENTON_HC_GIRLS;
 
-function buildChartData(visits: Visit[], dob: string, gaAtBirth: number, gender: Gender): ChartPoint[] {
-  const male = gender !== "female";
-  const lRef = male ? FENTON_LENGTH_BOYS : FENTON_LENGTH_GIRLS;
-  const hcRef = male ? FENTON_HC_BOYS : FENTON_HC_GIRLS;
-  const wRef = male ? FENTON_WEIGHT_BOYS : FENTON_WEIGHT_GIRLS;
+  const refWeeks: number[] = [];
+  for (let w = 22; w <= gaAtBirth; w += 2) refWeeks.push(w);
+  if (!refWeeks.includes(gaAtBirth)) refWeeks.push(gaAtBirth);
+  for (let y = 0; y < 5; y++) {
+    const base = gaAtBirth + (y * 52);
+    refWeeks.push(
+      base + 8.67, base + 17.33, base + 26,
+      base + 34.67, base + 43.33, base + 52
+    );
+  }
 
-  const refWeeks = [22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50];
-  const refPoints: ChartPoint[] = refWeeks.map(w => {
-    const l = interpolate(lRef, w);
-    const hc = interpolate(hcRef, w);
-    const wt = interpolate(wRef, w);
+  const pts: ChartPoint[] = refWeeks.map(w => {
+    const b = interpolate(bRef, w), g = interpolate(gRef, w);
+    let label = "";
+    if (w <= gaAtBirth) label = w === gaAtBirth ? "Birth" : `${Math.round(w)}w`;
+    else {
+      const weeksPast = w - gaAtBirth;
+      const years = Math.floor(weeksPast / 52);
+      const months = Math.round((weeksPast % 52) / 4.333);
+      if (months === 0) label = `${years} yr`;
+      else if (months === 12) label = `${years + 1} yr`;
+      else label = years > 0 ? `${years}y ${months}m` : `${months}m`;
+    }
     return {
-      week: w, weekLabel: `${w}w`,
-      height: null, weight: null, headCirc: null,
-      l_p3: l?.p3 ?? null, l_p15: l?.p15 ?? null, l_p50: l?.p50 ?? null, l_p85: l?.p85 ?? null, l_p97: l?.p97 ?? null,
-      hc_p3: hc?.p3 ?? null, hc_p15: hc?.p15 ?? null, hc_p50: hc?.p50 ?? null, hc_p85: hc?.p85 ?? null, hc_p97: hc?.p97 ?? null,
-      w_p3: wt?.p3 ?? null, w_p15: wt?.p15 ?? null, w_p50: wt?.p50 ?? null, w_p85: wt?.p85 ?? null, w_p97: wt?.p97 ?? null,
+      week: w, weekLabel: label, patient: null,
+      boys: { p3: b?.p3 ?? null, p15: b?.p15 ?? null, p50: b?.p50 ?? null, p85: b?.p85 ?? null, p97: b?.p97 ?? null },
+      girls: { p3: g?.p3 ?? null, p15: g?.p15 ?? null, p50: g?.p50 ?? null, p85: g?.p85 ?? null, p97: g?.p97 ?? null },
     };
   });
 
-  const visitPoints: ChartPoint[] = visits
-    .filter(v => v.date && dob)
-    .map(v => {
-      const cga = cgaWeek(dob, gaAtBirth, v.date);
-      const l = interpolate(lRef, cga);
-      const hc = interpolate(hcRef, cga);
-      const wt = interpolate(wRef, cga);
-      return {
-        week: parseFloat(cga.toFixed(1)),
-        weekLabel: `${cga.toFixed(1)}w\n${formatDate(v.date)}`,
-        height: v.height ? parseFloat(v.height) : null,
-        weight: v.weight ? parseFloat(v.weight) : null,
-        headCirc: v.headCirc ? parseFloat(v.headCirc) : null,
-        l_p3: l?.p3 ?? null, l_p15: l?.p15 ?? null, l_p50: l?.p50 ?? null, l_p85: l?.p85 ?? null, l_p97: l?.p97 ?? null,
-        hc_p3: hc?.p3 ?? null, hc_p15: hc?.p15 ?? null, hc_p50: hc?.p50 ?? null, hc_p85: hc?.p85 ?? null, hc_p97: hc?.p97 ?? null,
-        w_p3: wt?.p3 ?? null, w_p15: wt?.p15 ?? null, w_p50: wt?.p50 ?? null, w_p85: wt?.p85 ?? null, w_p97: wt?.p97 ?? null,
-      };
-    });
-
-  return [...refPoints, ...visitPoints].sort((a, b) => a.week - b.week);
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-export default function GrowChart() {
-  const navigate = useNavigate();
-  const { setPatient, homeForm, setHomeForm } = useGrowchart();
-  function newId() { return crypto.randomUUID(); }
-
-  const { patientName, dob, gender, gaAtBirth, plotted } = homeForm;
-  const visits = homeForm.visits;
-
-  const [chartData, setChartData] = useState<ChartPoint[]>(() => {
-    if (!homeForm.plotted || !homeForm.dob) return [];
-    const ga = parseFloat(homeForm.gaAtBirth) || 40;
-    return buildChartData(homeForm.visits, homeForm.dob, ga, homeForm.gender);
+  visits.filter(v => v.date && dob).forEach(v => {
+    const cga = cgaWeek(dob, gaAtBirth, v.date);
+    const b = interpolate(bRef, cga);
+    const g = interpolate(gRef, cga);
+    const raw = metric === "height" ? v.height : metric === "weight" ? v.weight : v.headCirc;
+    let tooltipLbl = cga <= gaAtBirth
+      ? `${cga.toFixed(1)}w`
+      : `${Math.floor((cga - gaAtBirth) / 52)}y ${Math.round(((cga - gaAtBirth) % 52) / 4.333)}m`;
+    const vp: ChartPoint = {
+      week: parseFloat(cga.toFixed(1)),
+      weekLabel: `${tooltipLbl}\n${formatDate(v.date)}`,
+      patient: raw ? parseFloat(raw) : null,
+      boys: { p3: b?.p3 ?? null, p15: b?.p15 ?? null, p50: b?.p50 ?? null, p85: b?.p85 ?? null, p97: b?.p97 ?? null },
+      girls: { p3: g?.p3 ?? null, p15: g?.p15 ?? null, p50: g?.p50 ?? null, p85: g?.p85 ?? null, p97: g?.p97 ?? null },
+    };
+    const idx = pts.findIndex(r => Math.abs(r.week - vp.week) < 0.5 && r.patient === null);
+    if (idx >= 0) pts[idx] = { ...pts[idx], patient: vp.patient, weekLabel: vp.weekLabel };
+    else pts.push(vp);
   });
 
-  const [visitErrors, setVisitErrors] = useState<Record<string, VisitErrors>>({});
+  return pts.sort((a, b) => a.week - b.week);
+}
 
-  // ─── GSAP refs ──────────────────────────────────────────────────────────────
-  const pageRef = useRef<HTMLDivElement>(null);
-  const formCardRef = useRef<HTMLDivElement>(null);
-  const chartCardRef = useRef<HTMLDivElement>(null);
-  const patientBadgeRef = useRef<HTMLDivElement>(null);
-  const visitListRef = useRef<HTMLDivElement>(null);
-  const plotBtnRef = useRef<HTMLButtonElement>(null);
+// ─── Chart Series & Plugin ────────────────────────────────────────────────────
+const PERCENTILE_COLORS = ["#22d3ee", "#34d399", "#3b82f6", "#f59e0b", "#f43f5e"];
+const BOYS_COLORS = PERCENTILE_COLORS;
+const GIRLS_COLORS = PERCENTILE_COLORS;
+const PATIENT_COLOR = "#111827";
+const PCTS = ["3rd", "15th", "50th", "85th", "97th"] as const;
 
-  // ── Page mount animation ────────────────────────────────────────────────────
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from(formCardRef.current, {
-        x: -40,
-        opacity: 0,
-        duration: 0.7,
-        ease: "power3.out",
+function buildSeries(data: ChartPoint[], genderView: GenderView) {
+  const showBoys = genderView === "both" || genderView === "male";
+  const showGirls = genderView === "both" || genderView === "female";
+  const percentileKeys = ["p3", "p15", "p50", "p85", "p97"] as const;
+  const datasets: Array<any> = [];
+
+  if (showBoys) {
+    percentileKeys.forEach((percentile, index) => {
+      datasets.push({
+        label: `Boys ${PCTS[index]}`,
+        data: data.map(point => ({ x: point.week, y: point.boys?.[percentile] ?? null, label: point.weekLabel })),
+        borderColor: BOYS_COLORS[index],
+        borderWidth: percentile === "p50" ? 2 : 1,
+        borderDash: [],
+        tension: 0.35, pointRadius: 0, fill: false, spanGaps: true,
       });
-      gsap.from(chartCardRef.current, {
-        x: 40,
-        opacity: 0,
-        duration: 0.7,
-        ease: "power3.out",
-        delay: 0.15,
-      });
-    }, pageRef);
-    return () => ctx.revert();
-  }, []);
-
-  // ── Patient badge slide-in when plotted ─────────────────────────────────────
-  useEffect(() => {
-    if (plotted && patientBadgeRef.current) {
-      gsap.fromTo(
-        patientBadgeRef.current,
-        { y: -12, opacity: 0, scale: 0.95 },
-        { y: 0, opacity: 1, scale: 1, duration: 0.45, ease: "back.out(1.7)" }
-      );
-    }
-  }, [plotted]);
-
-  // ── Chart card reveal when plotted ──────────────────────────────────────────
-  useEffect(() => {
-    if (plotted && chartCardRef.current) {
-      gsap.fromTo(
-        chartCardRef.current,
-        { opacity: 0.4, scale: 0.98, y: 10 },
-        { opacity: 1, scale: 1, y: 0, duration: 0.55, ease: "power2.out" }
-      );
-    }
-  }, [plotted, chartData]);
-
-  // ─── Visit management ───────────────────────────────────────────────────────
-  function addVisit() {
-    setHomeForm(prev => ({
-      ...prev,
-      visits: [...prev.visits, { id: newId(), date: "", height: "", weight: "", headCirc: "" }],
-    }));
+    });
   }
 
-  // ── Animate new visit card after React commits it to DOM ────────────────────
-  const prevVisitCountRef = useRef(visits.length);
-  useEffect(() => {
-    if (visits.length > prevVisitCountRef.current && visitListRef.current) {
-      const cards = visitListRef.current.querySelectorAll<HTMLElement>(".visit-card");
-      const last = cards[cards.length - 1];
-      if (last) {
-        gsap.fromTo(
-          last,
-          { opacity: 0, y: 20, scale: 0.95 },
-          { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "back.out(1.4)" }
-        );
+  if (showGirls) {
+    percentileKeys.forEach((percentile, index) => {
+      datasets.push({
+        label: `Girls ${PCTS[index]}`,
+        data: data.map(point => ({ x: point.week, y: point.girls?.[percentile] ?? null, label: point.weekLabel })),
+        borderColor: GIRLS_COLORS[index],
+        borderWidth: percentile === "p50" ? 2 : 1,
+        borderDash: [4, 3],
+        tension: 0.35, pointRadius: 0, fill: false, spanGaps: true,
+      });
+    });
+  }
+
+  datasets.push({
+    label: "Patient",
+    data: data.map(point => ({ x: point.week, y: point.patient, label: point.weekLabel })),
+    borderColor: PATIENT_COLOR, backgroundColor: PATIENT_COLOR,
+    borderWidth: 2.5, tension: 0.35, pointRadius: 5,
+    pointBackgroundColor: PATIENT_COLOR, pointBorderColor: "#fff", pointBorderWidth: 1.5,
+    fill: false, spanGaps: true,
+  });
+
+  return datasets;
+}
+
+const percentileLabelsPlugin = {
+  id: "percentileLabels",
+  afterDraw(chart: any) {
+    const { ctx, scales, chartArea } = chart;
+    if (!ctx || !chartArea) return;
+    const xRight = chartArea.right;
+    const xMax: number = scales.x.max;
+    const boysItems: { label: string; color: string; x: number; y: number }[] = [];
+    const girlsItems: { label: string; color: string; x: number; y: number }[] = [];
+
+    chart.data.datasets.forEach((dataset: any) => {
+      if (!dataset.label || dataset.label === "Patient") return;
+      const isBoys = dataset.label.startsWith("Boys");
+      const parts = dataset.label.split(" ");
+      const pctLabel = parts[parts.length - 1];
+      const visiblePoints = (dataset.data as any[]).filter((p: any) => p.y !== null && p.y !== undefined && p.x <= xMax);
+      if (!visiblePoints.length) return;
+      const lastPoint = visiblePoints[visiblePoints.length - 1];
+      const rawX = scales.x.getPixelForValue(lastPoint.x);
+      const rawY = scales.y.getPixelForValue(lastPoint.y);
+      if (!isFinite(rawX) || !isFinite(rawY)) return;
+      const labelX = Math.min(rawX, xRight - 2);
+      const item = { label: pctLabel, color: dataset.borderColor, x: labelX, y: rawY };
+      if (isBoys) boysItems.push(item); else girlsItems.push(item);
+    });
+
+    const resolveCollisions = (items: typeof boysItems) => {
+      if (!items.length) return;
+      items.sort((a, b) => a.y - b.y);
+      const minGap = 12;
+      for (let i = 1; i < items.length; i++) {
+        if (items[i].y - items[i - 1].y < minGap) items[i].y = items[i - 1].y + minGap;
       }
-    }
-    prevVisitCountRef.current = visits.length;
-  }, [visits.length]);
+      const yBottom = chartArea.bottom - 4;
+      for (let i = items.length - 1; i >= 0; i--) {
+        if (items[i].y > yBottom) items[i].y = yBottom;
+        if (i > 0 && items[i - 1].y > items[i].y - minGap) items[i - 1].y = items[i].y - minGap;
+      }
+    };
 
-  function removeVisit(id: string) {
-    // Animate out before removing
-    const card = visitListRef.current?.querySelector<HTMLElement>(`[data-visit-id="${id}"]`);
-    if (card) {
-      gsap.to(card, {
-        opacity: 0,
-        x: -20,
-        height: 0,
-        paddingTop: 0,
-        paddingBottom: 0,
-        marginBottom: 0,
-        duration: 0.3,
-        ease: "power2.in",
-        onComplete: () => {
-          setHomeForm(prev => ({ ...prev, visits: prev.visits.filter(v => v.id !== id) }));
+    resolveCollisions(boysItems);
+    resolveCollisions(girlsItems);
+
+    ctx.save();
+    ctx.font = "bold 10px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    [...boysItems, ...girlsItems].forEach(({ label, color, x, y }) => {
+      ctx.fillStyle = color;
+      ctx.fillText(label, x + 4, y);
+    });
+    ctx.restore();
+  },
+};
+
+// ─── MetricChart ──────────────────────────────────────────────────────────────
+function MetricChart({ data, yLabel, yStep, yMin, genderView, gaAtBirth }: {
+  data: ChartPoint[];
+  yLabel: string;
+  yStep: number;
+  yMin: number;
+  genderView: GenderView;
+  gaAtBirth: number;
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Animate chart wrapper on data/gender change
+  useEffect(() => {
+    if (wrapperRef.current) {
+      gsap.fromTo(
+        wrapperRef.current,
+        { opacity: 0, y: 12 },
+        { opacity: 1, y: 0, duration: 0.45, ease: "power2.out" }
+      );
+    }
+  }, [data, genderView]);
+
+  const series = buildSeries(data, genderView);
+  const maxVal = Math.max(
+    yMin,
+    ...data.flatMap(point => [
+      point.patient,
+      ...(point.boys ? Object.values(point.boys) : []),
+      ...(point.girls ? Object.values(point.girls) : []),
+    ]).filter((val): val is number => typeof val === "number"),
+  );
+  const maxY = Math.max(yMin + yStep * 4, ceilTo(maxVal, yStep));
+
+  const chartData: ChartData<"line"> = { datasets: series };
+  const chartXMin = Math.min(gaAtBirth, 40);
+  const chartXMax = gaAtBirth + 260;
+
+  const options: ChartOptions<"line"> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    parsing: false as const,
+    layout: { padding: { left: 20, right: 40 } },
+    scales: {
+      x: {
+        type: "linear" as const,
+        min: chartXMin,
+        max: chartXMax,
+        title: {
+          display: true,
+          text: "Age (preterm weeks / completed months & years)",
+          color: "#475569",
+          font: { size: 12, weight: "bold" as const },
+          padding: 10,
         },
-      });
-    } else {
-      setHomeForm(prev => ({ ...prev, visits: prev.visits.filter(v => v.id !== id) }));
-    }
-  }
-
-  function updateVisit(id: string, field: keyof Omit<Visit, "id">, value: string) {
-    setHomeForm(prev => ({
-      ...prev,
-      visits: prev.visits.map(v => v.id === id ? { ...v, [field]: value } : v),
-    }));
-    const num = parseFloat(value);
-    let err: string | undefined;
-    if (value && field === "headCirc" && num > 55) err = "Max 55 cm";
-    setVisitErrors(prev => ({ ...prev, [id]: { ...prev[id], [field]: err } }));
-  }
-
-  function handlePlot(e: React.FormEvent) {
-    e.preventDefault();
-    const hasErrors = Object.values(visitErrors).some(errs => errs && Object.values(errs).some(Boolean));
-    if (hasErrors) return;
-
-    // Button pulse before plotting
-    if (plotBtnRef.current) {
-      gsap.timeline()
-        .to(plotBtnRef.current, { scale: 0.93, duration: 0.1, ease: "power1.in" })
-        .to(plotBtnRef.current, { scale: 1, duration: 0.25, ease: "elastic.out(1.2, 0.5)" });
-    }
-
-    const ga = parseFloat(gaAtBirth) || 40;
-    const data = buildChartData(visits, dob, ga, gender);
-    setChartData(data);
-    setHomeForm(prev => ({ ...prev, plotted: true }));
-    setPatient({ patientName, dob, gender, gaAtBirth, visits });
-  }
-
-  function handleReset() {
-    // Animate form card shake on reset
-    if (formCardRef.current) {
-      gsap.timeline()
-        .to(formCardRef.current, { x: -6, duration: 0.07 })
-        .to(formCardRef.current, { x: 6, duration: 0.07 })
-        .to(formCardRef.current, { x: -4, duration: 0.06 })
-        .to(formCardRef.current, { x: 0, duration: 0.06 })
-        .then(() => {
-          setHomeForm({
-            patientName: "", dob: "", gender: "", gaAtBirth: "",
-            visits: [{ id: newId(), date: "", height: "", weight: "", headCirc: "" }],
-            plotted: false,
-          });
-          setChartData([]);
-          setVisitErrors({});
-        });
-    } else {
-      setHomeForm({
-        patientName: "", dob: "", gender: "", gaAtBirth: "",
-        visits: [{ id: newId(), date: "", height: "", weight: "", headCirc: "" }],
-        plotted: false,
-      });
-      setChartData([]);
-      setVisitErrors({});
-    }
-  }
-
-  // Gender button hover/click animation helper
-  function handleGenderClick(g: "male" | "female") {
-    setHomeForm(prev => ({ ...prev, gender: g }));
-    const btn = document.querySelector<HTMLElement>(`[data-gender="${g}"]`);
-    if (btn) {
-      gsap.timeline()
-        .to(btn, { scale: 0.92, duration: 0.08 })
-        .to(btn, { scale: 1.06, duration: 0.15, ease: "power2.out" })
-        .to(btn, { scale: 1, duration: 0.12, ease: "power1.in" });
-    }
-  }
+        afterBuildTicks: (axis: { ticks: { value: number }[] }) => {
+          const customTicks: { value: number }[] = [];
+          customTicks.push({ value: gaAtBirth });
+          for (let y = 0; y < 5; y++) {
+            const base = gaAtBirth + (y * 52);
+            customTicks.push(
+              { value: base + 8.67 }, { value: base + 17.33 }, { value: base + 26 },
+              { value: base + 34.67 }, { value: base + 43.33 }, { value: base + 52 }
+            );
+          }
+          axis.ticks = customTicks;
+        },
+        ticks: {
+          color: "#475569",
+          autoSkip: false,
+          maxRotation: 0,
+          font: (ctx: { tick?: { value: number } }) => {
+            const v = ctx.tick?.value ?? 0;
+            if (Math.abs(v - gaAtBirth) < 0.5 || (v > gaAtBirth && Math.abs((v - gaAtBirth) % 52) < 1))
+              return { size: 11, weight: "bold" as const };
+            return { size: 10 };
+          },
+          callback: (value: number | string) => {
+            const v = Number(value);
+            const eps = 0.5;
+            if (Math.abs(v - gaAtBirth) < eps) return "Birth";
+            if (v > gaAtBirth) {
+              const weeksPast = v - gaAtBirth;
+              const years = Math.round(weeksPast / 52);
+              if (Math.abs(weeksPast - years * 52) < eps) return `${years} yr`;
+              const months = Math.round((weeksPast % 52) / 4.333);
+              if ([2, 4, 6, 8, 10].includes(months)) return String(months);
+            }
+            return "";
+          },
+        },
+        grid: { color: "#e2e8f0" },
+      },
+      y: {
+        min: yMin, max: maxY,
+        title: { display: true, text: yLabel, color: "#475569", font: { size: 12, weight: "bold" as const } },
+        ticks: { stepSize: yStep, color: "#475569", font: { size: 11 } },
+        grid: { color: "#e8ebef" },
+      },
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          title: (items) => {
+            const raw = items[0]?.raw as { label?: string } | undefined;
+            return raw?.label ?? "";
+          },
+          label: (ctx) => {
+            const value = ctx.parsed.y;
+            return typeof value === "number"
+              ? `${ctx.dataset.label}: ${value.toFixed(1)} ${yLabel}`
+              : `${ctx.dataset.label}: —`;
+          },
+        },
+      },
+    },
+  };
 
   return (
-    <div ref={pageRef} style={s.page}>
-      <div style={s.wrapper}>
-        <div style={s.header}>
-          <div>
-            {plotted && patientName && (
-              <div ref={patientBadgeRef} style={s.patientBadge}>
-                <span style={s.patientName}>
-                  {patientName}
-                  {gender && (
-                    <span style={{ marginLeft: 6, color: gender === "male" ? "#3b82f6" : "#ec4899" }}>
-                      {gender === "male" ? "♂" : "♀"}
-                    </span>
-                  )}
-                </span>
-                {dob && (
-                  <span style={s.patientDob}>
-                    DOB: {formatDate(dob)}{gaAtBirth ? ` · GA ${gaAtBirth}w` : ""}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div style={s.body}>
-          {/* ── Form card ── */}
-          <div ref={formCardRef} style={s.formCard}>
-            <h2 style={s.sectionTitle}>Patient Info</h2>
-
-            <div style={s.field}>
-              <label style={s.label}>Patient Name</label>
-              <input
-                style={s.input}
-                type="text"
-                placeholder="Full name"
-                value={patientName}
-                onChange={e => setHomeForm(prev => ({ ...prev, patientName: e.target.value }))}
-              />
-            </div>
-
-            <div style={s.field}>
-              <label style={s.label}>Date of Birth</label>
-              <DatePicker
-                selected={dob ? new Date(dob) : null}
-                onChange={(date: Date | null) =>
-                  setHomeForm(prev => ({ ...prev, dob: date ? date.toISOString().split("T")[0] : "" }))
-                }
-                dateFormat="dd MMM yyyy"
-                placeholderText="Select date"
-                showMonthDropdown
-                showYearDropdown
-                dropdownMode="select"
-                yearDropdownItemNumber={10}
-                scrollableYearDropdown
-                maxDate={new Date()}
-                isClearable
-                todayButton="Today"
-                customInput={<input style={s.input} />}
-              />
-            </div>
-
-            <div style={s.field}>
-              <label style={s.label}>GA at Birth (weeks)</label>
-              <input
-                style={s.input}
-                type="number"
-                placeholder="e.g. 28"
-                value={gaAtBirth}
-                onChange={e => setHomeForm(prev => ({ ...prev, gaAtBirth: e.target.value }))}
-                min="22"
-                max="44"
-                step="1"
-              />
-            </div>
-
-            <div style={s.field}>
-              <label style={s.label}>Gender</label>
-              <div style={s.genderRow}>
-                {(["male", "female"] as const).map(g => (
-                  <button
-                    key={g}
-                    type="button"
-                    data-gender={g}
-                    onClick={() => handleGenderClick(g)}
-                    style={{
-                      ...s.genderBtn,
-                      ...(gender === g ? (g === "male" ? s.gMale : s.gFemale) : {}),
-                    }}
-                  >
-                    {g === "male" ? "♂ Male" : "♀ Female"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={s.divider} />
-
-            <div style={s.visitsHeader}>
-              <h2 style={s.sectionTitle}>Visits</h2>
-              <button type="button" onClick={addVisit} style={s.addBtn}>+ Add</button>
-            </div>
-
-            <form onSubmit={handlePlot}>
-              <div ref={visitListRef} style={s.visitList}>
-                {homeForm.visits.map((v, idx) => (
-                  <div
-                    key={v.id}
-                    className="visit-card"
-                    data-visit-id={v.id}
-                    style={s.visitCard}
-                  >
-                    <div style={s.visitCardHeader}>
-                      <span style={s.visitLabel}>Visit {idx + 1}</span>
-                      {visits.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeVisit(v.id)}
-                          style={s.removeBtn}
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-
-                    <div style={s.field}>
-                      <label style={s.label}>Date</label>
-                      <DatePicker
-                        selected={v.date ? new Date(v.date) : null}
-                        onChange={(date: Date | null) =>
-                          updateVisit(v.id, "date", date ? date.toISOString().split("T")[0] : "")
-                        }
-                        dateFormat="dd MMM yyyy"
-                        placeholderText="Select date"
-                        showMonthDropdown
-                        showYearDropdown
-                        dropdownMode="select"
-                        isClearable
-                        todayButton="Today"
-                        minDate={dob ? new Date(dob) : undefined}
-                        maxDate={new Date()}
-                        customInput={<input style={s.input} />}
-                      />
-                    </div>
-
-                    {v.date && dob && gaAtBirth && (
-                      <div style={s.field}>
-                        <label style={s.label}>Corrected GA (auto)</label>
-                        <div style={s.cgaDisplay}>
-                          {cgaWeek(dob, parseFloat(gaAtBirth) || 40, v.date).toFixed(1)}w
-                        </div>
-                      </div>
-                    )}
-
-                    <div style={s.row}>
-                      <div style={{ ...s.field, flex: 1 }}>
-                        <label style={s.label}>Length (cm)</label>
-                        <input
-                          style={s.input}
-                          type="number"
-                          placeholder="cm"
-                          value={v.height}
-                          onChange={e => updateVisit(v.id, "height", e.target.value)}
-                        />
-                      </div>
-                      <div style={{ ...s.field, flex: 1 }}>
-                        <label style={s.label}>Weight (kg)</label>
-                        <input
-                          style={s.input}
-                          type="number"
-                          placeholder="kg"
-                          value={v.weight}
-                          onChange={e => updateVisit(v.id, "weight", e.target.value)}
-                          step="0.01"
-                        />
-                      </div>
-                    </div>
-
-                    <div style={s.field}>
-                      <label style={s.label}>Head Circ. (cm)</label>
-                      {visitErrors[v.id]?.headCirc && (
-                        <span style={s.errorText}>{visitErrors[v.id].headCirc}</span>
-                      )}
-                      <input
-                        style={s.input}
-                        type="number"
-                        placeholder="cm"
-                        value={v.headCirc}
-                        onChange={e => updateVisit(v.id, "headCirc", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={s.btnRow}>
-                <button ref={plotBtnRef} type="submit" style={s.btnPrimary}>
-                  Plot Chart
-                </button>
-                <button type="button" onClick={handleReset} style={s.btnSecondary}>
-                  Reset
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* ── Chart card ── */}
-          <div ref={chartCardRef} style={s.chartCard}>
-            {plotted && (
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-                <button
-                  onClick={() => navigate("/detail")}
-                  style={s.detailBtn}
-                  onMouseEnter={e => gsap.to(e.currentTarget, { x: 3, duration: 0.2 })}
-                  onMouseLeave={e => gsap.to(e.currentTarget, { x: 0, duration: 0.2 })}
-                >
-                  View Individual Charts →
-                </button>
-              </div>
-            )}
-            {!plotted ? (
-              <Placeholder />
-            ) : (() => {
-              const patientPts = chartData
-                .filter(d => d.height != null || d.weight != null || d.headCirc != null)
-                .map(d => ({
-                  week: d.week,
-                  height: d.height,
-                  weight: d.weight,
-                  headCirc: d.headCirc,
-                  label: d.weekLabel,
-                }));
-              return (
-                <div>
-                  <div style={{ marginBottom: 16 }}>
-                    <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
-                      Fenton Preterm Growth Chart – {gender === "male" ? "Boys" : "Girls"}
-                    </h3>
-
-                  </div>
-                  <FentonChart gender={gender} patientData={patientPts} />
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      </div>
+    <div ref={wrapperRef} style={{ width: "100%", minHeight: 420 }}>
+      <Line data={chartData} options={options} plugins={[percentileLabelsPlugin]} />
     </div>
   );
 }
 
-// ─── Placeholder ──────────────────────────────────────────────────────────────
-function Placeholder() {
-  const ref = useRef<HTMLDivElement>(null);
+// ─── Detail Page ──────────────────────────────────────────────────────────────
+const METRICS: { key: Metric; label: string; icon: string; yLabel: string; yStep: number; yMin: number }[] = [
+  { key: "height",   label: "Length / Height",    icon: "📏", yLabel: "cm", yStep: 5, yMin: 15 },
+  { key: "weight",   label: "Weight",             icon: "⚖️",  yLabel: "kg", yStep: 1, yMin: 0  },
+  { key: "headCirc", label: "Head Circumference", icon: "🔵", yLabel: "cm", yStep: 5, yMin: 10 },
+];
+
+export default function GrowchartDetail() {
+  const navigate = useNavigate();
+  const { patient } = useGrowchart();
+  const [activeMetric, setActiveMetric] = useState<Metric>("height");
+  const [genderView, setGenderView] = useState<GenderView>("both");
+
+  // ─── Refs ──────────────────────────────────────────────────────────────────
+  const pageRef        = useRef<HTMLDivElement>(null);
+  const headerRef      = useRef<HTMLDivElement>(null);
+  const controlsRef    = useRef<HTMLDivElement>(null);
+  const chartCardRef   = useRef<HTMLDivElement>(null);
+  const tableCardRef   = useRef<HTMLDivElement>(null);
+  const tableBodyRef   = useRef<HTMLTableSectionElement>(null);
+
+  // ── Page mount stagger ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (ref.current) {
+    const ctx = gsap.context(() => {
+      gsap.from(
+        [headerRef.current, controlsRef.current, chartCardRef.current, tableCardRef.current],
+        {
+          opacity: 0,
+          y: 24,
+          duration: 0.55,
+          ease: "power3.out",
+          stagger: 0.1,
+        }
+      );
+    }, pageRef);
+    return () => ctx.revert();
+  }, []);
+
+  // ── Table rows stagger on metric change ─────────────────────────────────────
+  useEffect(() => {
+    if (tableBodyRef.current) {
+      const rows = tableBodyRef.current.querySelectorAll("tr");
       gsap.fromTo(
-        ref.current,
-        { opacity: 0, y: 10 },
-        { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }
+        rows,
+        { opacity: 0, x: -10 },
+        { opacity: 1, x: 0, duration: 0.3, ease: "power2.out", stagger: 0.05 }
       );
     }
-  }, []);
+  }, [activeMetric]);
+
+  // ── Chart card flash on metric/gender change ────────────────────────────────
+  useEffect(() => {
+    if (chartCardRef.current) {
+      gsap.fromTo(
+        chartCardRef.current,
+        { opacity: 0.5, scale: 0.985 },
+        { opacity: 1, scale: 1, duration: 0.4, ease: "power2.out" }
+      );
+    }
+  }, [activeMetric, genderView]);
+
+  // ── Tab button click animation ──────────────────────────────────────────────
+  function animateTabClick(el: HTMLButtonElement) {
+    gsap.timeline()
+      .to(el, { scale: 0.9, duration: 0.08 })
+      .to(el, { scale: 1.05, duration: 0.15, ease: "power2.out" })
+      .to(el, { scale: 1, duration: 0.1 });
+  }
+
+  function handleMetricChange(key: Metric, el: HTMLButtonElement) {
+    animateTabClick(el);
+    setActiveMetric(key);
+  }
+
+  function handleGenderChange(key: GenderView, el: HTMLButtonElement) {
+    animateTabClick(el);
+    setGenderView(key);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (!patient) {
+    return (
+      <div style={s.page}>
+        <div style={s.empty}>
+          <p style={{ color: "#64748b", fontSize: 15 }}>No patient data. Go back and plot a chart first.</p>
+          <button onClick={() => navigate("/")} style={s.btn}>← Back to Chart</button>
+        </div>
+      </div>
+    );
+  }
+
+  const ga = parseFloat(patient.gaAtBirth) || 40;
+  const m = METRICS.find(x => x.key === activeMetric)!;
+  const chartData = buildData(patient.visits, patient.dob, ga, activeMetric);
+
   return (
-    <div ref={ref} style={s.placeholder}>
-      <p style={s.placeholderText}>Enter Patient Parameters to view Fenton Grid markings</p>
+    <div ref={pageRef} style={s.page}>
+      <div style={s.wrapper}>
+
+        {/* ── Page title ── */}
+        <div ref={headerRef} style={s.pageHeader}>
+          <div>
+            <h1 style={s.title}>Individual Growth Charts</h1>
+            <p style={s.sub}>
+              {patient.patientName && <strong>{patient.patientName} </strong>}
+              {patient.gender && (
+                <span style={{ color: patient.gender === "male" ? BOYS_COLORS[2] : GIRLS_COLORS[2] }}>
+                  {patient.gender === "male" ? "♂ Boy" : "♀ Girl"}
+                </span>
+              )}
+              {patient.gaAtBirth && <span style={{ color: "#64748b" }}> · GA {patient.gaAtBirth}w at birth</span>}
+            </p>
+          </div>
+        </div>
+
+        {/* ── Controls row ── */}
+        <div ref={controlsRef} style={s.controlsRow}>
+          <div style={s.tabGroup}>
+            <span style={s.controlLabel}>Attribute</span>
+            <div style={s.tabs}>
+              {METRICS.map(metric => (
+                <button
+                  key={metric.key}
+                  onClick={e => handleMetricChange(metric.key, e.currentTarget)}
+                  style={{ ...s.tab, ...(activeMetric === metric.key ? s.tabActive : {}) }}
+                >
+                  {metric.icon} {metric.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={s.tabGroup}>
+            <span style={s.controlLabel}>Reference</span>
+            <div style={s.tabs}>
+              {([
+                { key: "both",   label: "♂ + ♀ Both"   },
+                { key: "male",   label: "♂ Boys only"  },
+                { key: "female", label: "♀ Girls only" },
+              ] as { key: GenderView; label: string }[]).map(g => (
+                <button
+                  key={g.key}
+                  onClick={e => handleGenderChange(g.key, e.currentTarget)}
+                  style={{
+                    ...s.tab,
+                    ...(genderView === g.key
+                      ? g.key === "male"   ? s.tabActiveMale
+                      : g.key === "female" ? s.tabActiveFemale
+                      : s.tabActive
+                      : {}),
+                  }}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Chart card ── */}
+        <div ref={chartCardRef} style={s.chartCard}>
+          <div style={s.chartCardHeader}>
+            <div>
+              <h2 style={s.chartTitle}>{m.icon} {m.label}</h2>
+              <p style={s.chartSub}>
+                {genderView === "both"   && <><span style={{ color: BOYS_COLORS[2] }}>♂ Boys</span> &amp; <span style={{ color: GIRLS_COLORS[2] }}>♀ Girls</span> reference</>}
+                {genderView === "male"   && <span style={{ color: BOYS_COLORS[2] }}>♂ Boys reference only</span>}
+                {genderView === "female" && <span style={{ color: GIRLS_COLORS[2] }}>♀ Girls reference only</span>}
+                <span style={{ color: "#94a3b8", marginLeft: 8 }}>· Patient in black</span>
+              </p>
+            </div>
+            <div style={s.inlineLegend}>
+              {(genderView === "both" || genderView === "male") && (
+                <span style={s.legendItem}>
+                  <span style={{ ...s.legendLine, borderColor: BOYS_COLORS[2] }} />
+                  Boys (3rd–97th)
+                </span>
+              )}
+              {(genderView === "both" || genderView === "female") && (
+                <span style={s.legendItem}>
+                  <span style={{ ...s.legendLine, borderColor: GIRLS_COLORS[2], borderStyle: "dashed" }} />
+                  Girls (3rd–97th)
+                </span>
+              )}
+              <span style={s.legendItem}>
+                <span style={{ ...s.legendLine, borderColor: PATIENT_COLOR, borderWidth: 2 }} />
+                Patient
+              </span>
+            </div>
+          </div>
+
+          <MetricChart
+            data={chartData}
+            yLabel={m.yLabel}
+            yStep={m.yStep}
+            yMin={m.yMin}
+            genderView={genderView}
+            gaAtBirth={ga}
+          />
+        </div>
+
+        {/* ── Visit summary table ── */}
+        <div ref={tableCardRef} style={s.tableCard}>
+          <h3 style={s.tableTitle}>Visit Data — {m.label}</h3>
+          <div style={{ overflowX: "auto" as const }}>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  {["Visit", "CGA (w)", "Date", m.yLabel === "kg" ? "Weight (kg)" : `${m.label} (${m.yLabel})`].map(h => (
+                    <th key={h} style={s.th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody ref={tableBodyRef}>
+                {patient.visits.filter(v => v.date).map((v, i) => {
+                  const cga = cgaWeek(patient.dob, ga, v.date);
+                  const val = activeMetric === "height" ? v.height
+                    : activeMetric === "weight" ? v.weight
+                    : v.headCirc;
+                  return (
+                    <tr key={v.id} style={i % 2 === 0 ? s.trEven : s.trOdd}>
+                      <td style={s.td}>{i + 1}</td>
+                      <td style={{ ...s.td, fontWeight: 600 }}>{cga.toFixed(1)}w</td>
+                      <td style={s.td}>{formatDate(v.date)}</td>
+                      <td style={{ ...s.td, fontWeight: 700, color: "#1e293b" }}>{val || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight: "calc(100vh - 52px)", backgroundColor: "#f8fafc", padding: "24px", fontFamily: "system-ui, sans-serif", boxSizing: "border-box", width: "100%" },
-  wrapper: { maxWidth: "100%", margin: "0 auto" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" },
-  patientBadge: { backgroundColor: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "8px 16px" },
-  patientName: { fontWeight: 700, fontSize: "14px", color: "#0f172a" },
-  patientDob: { fontSize: "12px", color: "#475569", marginLeft: 8 },
-  body: { display: "flex", gap: "20px", alignItems: "flex-start", width: "100%" },
-  formCard: { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "20px", width: "300px", flexShrink: 0, display: "flex", flexDirection: "column", gap: "12px" },
-  chartCard: { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "24px", flex: 1, minWidth: 0 },
-  sectionTitle: { margin: 0, fontSize: "14px", fontWeight: 700, color: "#0f172a" },
-  field: { display: "flex", flexDirection: "column", gap: "4px" },
-  row: { display: "flex", gap: "8px" },
-  label: { fontSize: "11px", fontWeight: 600, color: "#475569" },
-  input: { padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", color: "#0f172a", width: "100%", boxSizing: "border-box" },
-  cgaDisplay: { padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0", fontSize: "13px", color: "#0f172a", backgroundColor: "#f8fafc", fontWeight: 600 },
-  errorText: { fontSize: "11px", color: "#ef4444", fontWeight: 500 },
-  divider: { borderTop: "1px solid #e2e8f0", margin: "4px 0" },
-  genderRow: { display: "flex", gap: "8px" },
-  genderBtn: { flex: 1, padding: "8px 0", borderRadius: "6px", border: "1px solid #cbd5e1", backgroundColor: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  gMale: { backgroundColor: "#eff6ff", borderColor: "#2563eb", color: "#2563eb" },
-  gFemale: { backgroundColor: "#fdf2f8", borderColor: "#db2777", color: "#db2777" },
-  visitsHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  addBtn: { padding: "4px 12px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer" },
-  visitList: { display: "flex", flexDirection: "column", gap: "10px", maxHeight: "340px", overflowY: "auto" },
-  visitCard: { border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px", backgroundColor: "#f8fafc" },
-  visitCardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" },
-  visitLabel: { fontSize: "12px", fontWeight: 700, color: "#0f172a" },
-  removeBtn: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "12px" },
-  btnRow: { display: "flex", gap: "8px", marginTop: "12px" },
-  btnPrimary: { flex: 1, padding: "10px", backgroundColor: "#2563eb", color: "#fff", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, cursor: "pointer" },
-  btnSecondary: { flex: 1, padding: "10px", backgroundColor: "#fff", color: "#475569", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer" },
-  placeholder: { display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px" },
-  placeholderText: { color: "#64748b", fontSize: "14px" },
-  detailBtn: { padding: "8px 16px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600 },
+  page: { minHeight: "calc(100vh - 52px)", backgroundColor: "#f0f4f8", padding: "24px", fontFamily: "'Segoe UI', sans-serif", boxSizing: "border-box" as const, width: "100%" },
+  wrapper: { maxWidth: "100%", margin: "0 auto", display: "flex", flexDirection: "column" as const, gap: 20 },
+  empty: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: 16 },
+  pageHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 },
+  title: { margin: 0, fontSize: 22, fontWeight: 800, color: "#1e293b" },
+  sub: { margin: "4px 0 0", fontSize: 13, color: "#64748b" },
+  btn: { padding: "8px 16px", backgroundColor: "#f1f5f9", color: "#374151", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  controlsRow: { display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end", backgroundColor: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
+  tabGroup: { display: "flex", flexDirection: "column", gap: 6 },
+  controlLabel: { fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" },
+  tabs: { display: "flex", gap: 6, flexWrap: "wrap" },
+  tab: { padding: "7px 14px", borderRadius: 7, border: "1px solid #d1d5db", backgroundColor: "#f8fafc", color: "#64748b", fontSize: 13, fontWeight: 500, cursor: "pointer" },
+  tabActive: { backgroundColor: "#1e293b", border: "1px solid #1e293b", color: "#fff", fontWeight: 700 },
+  tabActiveMale: { backgroundColor: "#eff6ff", border: "1px solid #3b82f6", color: "#1d4ed8", fontWeight: 700 },
+  tabActiveFemale: { backgroundColor: "#fdf2f8", border: "1px solid #ec4899", color: "#be185d", fontWeight: 700 },
+  chartCard: { backgroundColor: "#fff", borderRadius: 14, boxShadow: "0 4px 20px rgba(0,0,0,0.07)", padding: "24px", width: "100%" },
+  chartCardHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, flexWrap: "wrap", gap: 8 },
+  chartTitle: { margin: 0, fontSize: 18, fontWeight: 700, color: "#1e293b" },
+  chartSub: { margin: "4px 0 0", fontSize: 12, color: "#64748b" },
+  inlineLegend: { display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" },
+  legendItem: { display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#475569" },
+  legendLine: { display: "inline-block", width: 20, height: 0, borderTopWidth: 2, borderTopStyle: "solid", borderColor: "#000" },
+  tableCard: { backgroundColor: "#fff", borderRadius: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "20px 24px" },
+  tableTitle: { margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#1e293b" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
+  th: { padding: "8px 12px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "2px solid #e2e8f0" },
+  td: { padding: "8px 12px", color: "#1e293b" },
+  trEven: { backgroundColor: "#f8fafc" },
+  trOdd: { backgroundColor: "#fff" },
 };
