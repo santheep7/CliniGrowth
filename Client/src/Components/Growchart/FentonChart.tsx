@@ -12,6 +12,7 @@ import {
   Title,
   type ChartData,
   type ChartOptions,
+  type ChartDataset,
 } from "chart.js";
 import {
   FENTON_WEIGHT_BOYS, FENTON_WEIGHT_GIRLS,
@@ -38,6 +39,9 @@ interface FentonChartProps {
   patientData: PatientPoint[];
 }
 
+// Extend ChartDataset to allow yAxisID (Chart.js supports it but TS types may not expose it cleanly)
+type ExtendedDataset = ChartDataset<"line"> & { yAxisID?: string };
+
 const X_MIN = 22;
 const X_MAX = 50;
 const Y_MIN = 0;
@@ -63,11 +67,7 @@ function mapValueToChart(label: string, value: number) {
     : mapCmValue(value);
 }
 
-function formatValue(label: string, value: number) {
-  return label.toLowerCase().includes("weight") ? `${value.toFixed(1)} kg` : `${value.toFixed(1)} cm`;
-}
-
-// Y ticks are generated dynamically inside the component based on data range
+// FIX #3: Guard against empty arrays to avoid Infinity/-Infinity from Math.min/max
 function buildYTicks(
   weightMin: number, weightMax: number,
   cmMin: number, cmMax: number
@@ -95,7 +95,6 @@ function buildYTicks(
 
 function formatTick(value: number) {
   if (value <= WEIGHT_BAND_MAX) {
-    // convert chart-space back to raw kg and snap to 0.5 kg increments
     let raw = (value / WEIGHT_BAND_MAX) * WEIGHT_RAW_MAX;
     raw = Math.round(raw * 2) / 2; // nearest 0.5 kg
     return raw.toFixed(1);
@@ -109,11 +108,18 @@ const COLORS = {
   patient: "#111827",
 };
 
+// FIX #4: Return null when x is strictly outside the data range instead of extrapolating
 function interpolateRef(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
   if (!data.length) return null;
   const sorted = [...data].sort((a, b) => a.x - b.x);
-  if (x <= sorted[0].x) return sorted[0];
-  if (x >= sorted[sorted.length - 1].x) return sorted[sorted.length - 1];
+
+  // Strictly out of range → return null to avoid extrapolation
+  if (x < sorted[0].x || x > sorted[sorted.length - 1].x) return null;
+
+  // Exact match at boundary
+  if (x === sorted[0].x) return sorted[0];
+  if (x === sorted[sorted.length - 1].x) return sorted[sorted.length - 1];
+
   const lo = sorted.filter(d => d.x <= x).pop()!;
   const hi = sorted.find(d => d.x > x)!;
   const t = (x - lo.x) / (hi.x - lo.x);
@@ -127,8 +133,8 @@ function interpolateRef(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null
   };
 }
 
-function buildSeries(refData: RefPoint[], label: string) {
-  return PERCENTILES.map((percentile, index) => {
+function buildSeries(refData: RefPoint[], label: string): ExtendedDataset[] {
+  return PERCENTILES.map((percentile) => {
     const data = REF_WEEKS.map(w => {
       const point = interpolateRef(refData, w);
       if (!point || point[percentile] == null) return null;
@@ -150,11 +156,16 @@ function buildSeries(refData: RefPoint[], label: string) {
       pointRadius: 0,
       spanGaps: true,
       fill: false,
-    };
+    } as ExtendedDataset;
   });
 }
 
-function buildPatientDataset(label: string, points: Array<{ x: number; y: number; label?: string }>, dash?: number[]) {
+// FIX #7: Use type predicate in filter so non-null assertion is unnecessary
+function buildPatientDataset(
+  label: string,
+  points: Array<{ x: number; y: number; label?: string }>,
+  dash?: number[]
+): ExtendedDataset {
   return {
     label,
     data: points.map(point => ({
@@ -174,7 +185,45 @@ function buildPatientDataset(label: string, points: Array<{ x: number; y: number
     pointBorderWidth: 1.5,
     spanGaps: true,
     fill: false,
-  };
+  } as ExtendedDataset;
+}
+
+// ─── Plugin helper functions (module-scoped to avoid re-creation on every draw) ──
+
+function getPixelAtChartX(meta: any, chartX: number): { x: number; y: number } | null {
+  if (!meta?.data?.length) return null;
+  const pts: any[] = meta.data.filter((p: any) => p != null && p.x != null);
+  if (!pts.length) return null;
+  let lo: any = null, hi: any = null;
+  for (const pt of pts) {
+    if (pt.x <= chartX) lo = pt;
+    if (pt.x >= chartX && !hi) hi = pt;
+  }
+  if (!lo && hi) return hi;
+  if (lo && !hi) return lo;
+  if (!lo || !hi) return null;
+  if (lo === hi) return lo;
+  const t = (chartX - lo.x) / (hi.x - lo.x);
+  return { x: chartX, y: lo.y + t * (hi.y - lo.y) };
+}
+
+function drawOnLineLabel(
+  ctx: CanvasRenderingContext2D,
+  text: string, px: number, py: number,
+  font: string, color: string
+) {
+  ctx.save();
+  ctx.font = font;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const tw = ctx.measureText(text).width;
+  const pad = 5;
+  const boxH = 16;
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.fillRect(px - tw / 2 - pad, py - boxH / 2, tw + pad * 2, boxH);
+  ctx.fillStyle = color;
+  ctx.fillText(text, px, py);
+  ctx.restore();
 }
 
 const fentonBackgroundPlugin = {
@@ -183,25 +232,44 @@ const fentonBackgroundPlugin = {
     const { ctx, chartArea, scales } = chart;
     if (!ctx) return;
     const { left, right, top, bottom } = chartArea;
-    const splitPixel = scales.y.getPixelForValue(WEIGHT_BAND_MAX);
+
+    // FIX #1/#2: Single ctx.save() at the top; restore canvas state cleanly at the end.
+    // All intermediate draws use nested save/restore pairs so state never bleeds.
     ctx.save();
+
+    const splitPixel = scales.y.getPixelForValue(WEIGHT_BAND_MAX);
+
+    // ── Background bands ──
     ctx.fillStyle = "rgba(248,250,252,0.55)";
     ctx.fillRect(left, splitPixel, right - left, bottom - splitPixel);
     ctx.fillStyle = "rgba(250,251,253,0.35)";
     ctx.fillRect(left, top, right - left, splitPixel - top);
+
+    // ── Divider line between weight and cm bands ──
+    // FIX #2: Reset strokeStyle and lineDash explicitly before each distinct draw operation.
+    ctx.save();
     ctx.strokeStyle = "#475569";
     ctx.lineWidth = 2.5;
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(left, splitPixel);
     ctx.lineTo(right, splitPixel);
     ctx.stroke();
+    ctx.restore();
 
-    // Draw right-side border to match y-axis left border
+    // ── Right-side border ──
+    ctx.save();
+    ctx.strokeStyle = "#475569";
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(right, top);
     ctx.lineTo(right, bottom);
     ctx.stroke();
+    ctx.restore();
 
+    // ── Term (40w) dashed vertical line ──
+    ctx.save();
     const x40 = scales.x.getPixelForValue(40);
     ctx.strokeStyle = "#475569";
     ctx.setLineDash([4, 3]);
@@ -210,13 +278,18 @@ const fentonBackgroundPlugin = {
     ctx.moveTo(x40, top);
     ctx.lineTo(x40, bottom);
     ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.restore(); // dash cleared here; no bleed into subsequent draws
 
+    // ── "Term (40w)" label above the dashed line ──
+    ctx.save();
     ctx.fillStyle = "#475569";
     ctx.font = "11px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("Term (40w)", x40, top - 8);
+    ctx.restore();
 
+    // ── Left & right axis labels ──
+    ctx.save();
     ctx.font = "bold 11px system-ui, sans-serif";
     ctx.fillStyle = "#0f172a";
 
@@ -225,7 +298,7 @@ const fentonBackgroundPlugin = {
     const cmPixel60 = scales.y.getPixelForValue(60);
     const midCmPixel = (splitPixel + cmPixel60) / 2;
 
-    // Left-side vertical labels
+    // Left weight
     ctx.save();
     ctx.translate(left - 40, midWeightPixel);
     ctx.rotate(-Math.PI / 2);
@@ -233,6 +306,7 @@ const fentonBackgroundPlugin = {
     ctx.fillText("Weight (kilograms)", 0, 0);
     ctx.restore();
 
+    // Left cm
     ctx.save();
     ctx.translate(left - 40, midCmPixel);
     ctx.rotate(-Math.PI / 2);
@@ -240,7 +314,7 @@ const fentonBackgroundPlugin = {
     ctx.fillText("Centimeters", 0, 0);
     ctx.restore();
 
-    // Right-side vertical labels
+    // Right weight
     ctx.save();
     ctx.translate(right + 40, midWeightPixel);
     ctx.rotate(-Math.PI / 2);
@@ -248,6 +322,7 @@ const fentonBackgroundPlugin = {
     ctx.fillText("Weight (kilograms)", 0, 0);
     ctx.restore();
 
+    // Right cm
     ctx.save();
     ctx.translate(right + 40, midCmPixel);
     ctx.rotate(-Math.PI / 2);
@@ -255,51 +330,16 @@ const fentonBackgroundPlugin = {
     ctx.fillText("Centimeters", 0, 0);
     ctx.restore();
 
-    // ── Inline labels drawn directly ON the lines ──
-    // Series name on the p50 curve, percentile numbers on every curve
+    ctx.restore(); // closes the outer save from font/fillStyle block
 
+    // ── Inline labels drawn directly ON the lines ──
     const PERCENTILE_LABELS = ["3", "15", "50", "85", "97"];
 
     const SERIES_CONFIG: { prefix: string; nameAtX: number; percAtX: number }[] = [
-      { prefix: "Length",             nameAtX: 26, percAtX: 47 },
+      { prefix: "Length", nameAtX: 26, percAtX: 47 },
       { prefix: "Head Circumference", nameAtX: 26, percAtX: 47 },
-      { prefix: "Weight",             nameAtX: 26, percAtX: 43 },
+      { prefix: "Weight", nameAtX: 26, percAtX: 43 },
     ];
-
-    function getPixelAtChartX(meta: any, chartX: number) {
-      if (!meta?.data?.length) return null;
-      const pts: any[] = meta.data.filter((p: any) => p != null && p.x != null);
-      if (!pts.length) return null;
-      let lo: any = null, hi: any = null;
-      for (const pt of pts) {
-        if (pt.x <= chartX) lo = pt;
-        if (pt.x >= chartX && !hi) hi = pt;
-      }
-      if (!lo && hi) return hi;
-      if (lo && !hi) return lo;
-      if (!lo || !hi) return null;
-      if (lo === hi) return lo;
-      const t = (chartX - lo.x) / (hi.x - lo.x);
-      return { x: chartX, y: lo.y + t * (hi.y - lo.y) };
-    }
-
-    function drawOnLineLabel(
-      text: string, px: number, py: number,
-      font: string, color: string
-    ) {
-      ctx.save();
-      ctx.font = font;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const tw = ctx.measureText(text).width;
-      const pad = 5;
-      const boxH = 16;
-      ctx.fillStyle = "rgba(255,255,255,0.92)";
-      ctx.fillRect(px - tw / 2 - pad, py - boxH / 2, tw + pad * 2, boxH);
-      ctx.fillStyle = color;
-      ctx.fillText(text, px, py);
-      ctx.restore();
-    }
 
     SERIES_CONFIG.forEach(({ prefix, nameAtX, percAtX }) => {
       const matched = chart.data.datasets
@@ -316,6 +356,7 @@ const fentonBackgroundPlugin = {
         const percPt = getPixelAtChartX(meta, percPixelX);
         if (percPt && percPt.y >= top && percPt.y <= bottom) {
           drawOnLineLabel(
+            ctx,
             PERCENTILE_LABELS[pIdx],
             percPt.x, percPt.y,
             isP50 ? "bold 11px system-ui, sans-serif" : "11px system-ui, sans-serif",
@@ -330,6 +371,7 @@ const fentonBackgroundPlugin = {
           if (namePt && namePt.y >= top && namePt.y <= bottom) {
             const shortName = prefix === "Head Circumference" ? "Head Circ." : prefix;
             drawOnLineLabel(
+              ctx,
               shortName,
               namePt.x, namePt.y - 13,
               "bold 12px system-ui, sans-serif",
@@ -340,72 +382,106 @@ const fentonBackgroundPlugin = {
       });
     });
 
+    // ── Balance the outermost ctx.save() ──
     ctx.restore();
   },
 };
 
 export default function FentonChart({ gender, patientData }: FentonChartProps) {
-  const isMale = gender === "male";
-  const wRef = isMale ? FENTON_WEIGHT_BOYS : FENTON_WEIGHT_GIRLS;
-  const lRef = isMale ? FENTON_LENGTH_BOYS : FENTON_LENGTH_GIRLS;
-  const hcRef = isMale ? FENTON_HC_BOYS : FENTON_HC_GIRLS;
+  // FIX #5: Warn (dev-only) when gender is unset; use female as safe fallback but make it explicit.
+  if (process.env.NODE_ENV !== "production" && gender === "") {
+    console.warn(
+      "[FentonChart] gender prop is empty. Reference curves will not be rendered. " +
+      "Pass 'male' or 'female' to display Fenton reference data."
+    );
+  }
 
-  // Compute dynamic Y tick range from reference data + patient data
+  const showReference = gender === "male" || gender === "female";
+  const isMale = gender === "male";
+
+  // FIX #3: Guard against empty arrays before spreading into Math.min/max
   const yTickValues = useMemo(() => {
-    // Gather all weight values from ref data
-    const allWeights = wRef.flatMap(p => [p.p3, p.p97]);
-    const allCms = [
-      ...lRef.flatMap(p => [p.p3, p.p97]),
-      ...hcRef.flatMap(p => [p.p3, p.p97]),
+    // Derive ref arrays inside memo so gender is the sole dep and no stale refs occur
+    const wR = showReference ? (isMale ? FENTON_WEIGHT_BOYS : FENTON_WEIGHT_GIRLS) : [];
+    const lR = showReference ? (isMale ? FENTON_LENGTH_BOYS : FENTON_LENGTH_GIRLS) : [];
+    const hcR = showReference ? (isMale ? FENTON_HC_BOYS : FENTON_HC_GIRLS) : [];
+
+    const allWeights: number[] = [...wR.flatMap(p => [p.p3, p.p97])];
+    const allCms: number[] = [
+      ...lR.flatMap(p => [p.p3, p.p97]),
+      ...hcR.flatMap(p => [p.p3, p.p97]),
     ];
-    // Include patient data in range calculation
+
     patientData.forEach(p => {
       if (p.weight != null) allWeights.push(p.weight);
       if (p.height != null) allCms.push(p.height);
       if (p.headCirc != null) allCms.push(p.headCirc);
     });
-    const wMin = Math.min(...allWeights);
-    const wMax = Math.max(...allWeights);
-    const cmMin = Math.min(...allCms);
-    const cmMax = Math.max(...allCms);
+
+    // Safe fallbacks when arrays are empty (e.g. gender === "")
+    const wMin = allWeights.length > 0 ? Math.min(...allWeights) : 0;
+    const wMax = allWeights.length > 0 ? Math.max(...allWeights) : 10;
+    const cmMin = allCms.length > 0 ? Math.min(...allCms) : CM_RAW_MIN;
+    const cmMax = allCms.length > 0 ? Math.max(...allCms) : CM_RAW_MAX;
+
     return buildYTicks(wMin, wMax, cmMin, cmMax);
   }, [gender, patientData]);
 
-  const datasets = useMemo(() => {
+  const datasets: ExtendedDataset[] = useMemo(() => {
+    // FIX #2: Derive ref arrays inside memo so gender is the sole dep — no stale external refs
+    const showRef = gender === "male" || gender === "female";
+    const male = gender === "male";
+    const wRef = showRef ? (male ? FENTON_WEIGHT_BOYS : FENTON_WEIGHT_GIRLS) : [];
+    const lRef = showRef ? (male ? FENTON_LENGTH_BOYS : FENTON_LENGTH_GIRLS) : [];
+    const hcRef = showRef ? (male ? FENTON_HC_BOYS : FENTON_HC_GIRLS) : [];
+
     const lengthSets = buildSeries(lRef, "Length");
     const headSets = buildSeries(hcRef, "Head Circumference");
     const weightSets = buildSeries(wRef, "Weight");
+
+    // FIX #7: Use type predicates in filter so no non-null assertions needed
     const patientLength = buildPatientDataset(
       "Patient Length",
-      patientData.filter(p => p.height != null).map(p => ({ x: p.week, y: p.height!, label: p.label }))
+      patientData
+        .filter((p): p is PatientPoint & { height: number } => p.height != null)
+        .map(p => ({ x: p.week, y: p.height, label: p.label }))
     );
     const patientHead = buildPatientDataset(
       "Patient Head Circumference",
-      patientData.filter(p => p.headCirc != null).map(p => ({ x: p.week, y: p.headCirc!, label: p.label })),
+      patientData
+        .filter((p): p is PatientPoint & { headCirc: number } => p.headCirc != null)
+        .map(p => ({ x: p.week, y: p.headCirc, label: p.label })),
       [6, 4]
     );
     const patientWeight = buildPatientDataset(
       "Patient Weight",
-      patientData.filter(p => p.weight != null).map(p => ({ x: p.week, y: p.weight!, label: p.label })),
+      patientData
+        .filter((p): p is PatientPoint & { weight: number } => p.weight != null)
+        .map(p => ({ x: p.week, y: p.weight, label: p.label })),
       [2, 2]
     );
-    const rightAxisHelper = {
+
+    // FIX #6: Cast helper dataset as ExtendedDataset to satisfy yAxisID typing
+    const rightAxisHelper: ExtendedDataset = {
       label: "yRightHelper",
       data: [{ x: X_MIN, y: 0 }],
       yAxisID: "yRight",
       borderWidth: 0,
       pointRadius: 0,
-      hoverRadius: 0,
+      pointHoverRadius: 0,
       tension: 0,
       showLine: false,
       fill: false,
       backgroundColor: "transparent",
       borderColor: "transparent",
-    };
+    } as ExtendedDataset;
+
     return [...lengthSets, ...headSets, ...weightSets, patientLength, patientHead, patientWeight, rightAxisHelper];
   }, [gender, patientData]);
 
-  const data: ChartData<"line"> = useMemo(() => ({ datasets }), [datasets]);
+  const data: ChartData<"line"> = useMemo(() => ({
+    datasets: datasets as ChartDataset<"line">[],
+  }), [datasets]);
 
   const options: ChartOptions<"line"> = useMemo(() => ({
     responsive: true,
@@ -415,9 +491,9 @@ export default function FentonChart({ gender, patientData }: FentonChartProps) {
       legend: { display: false },
       tooltip: {
         callbacks: {
-          title: items => items[0]?.raw?.label ?? "",
+          title: items => (items[0]?.raw as any)?.label || undefined,
           label: ctx => {
-            const rawValue = ctx.raw?.yOriginal ?? ctx.parsed.y;
+            const rawValue = (ctx.raw as any)?.yOriginal ?? ctx.parsed.y;
             const unit = ctx.dataset.label?.toLowerCase().includes("weight") ? "kg" : "cm";
             return `${ctx.dataset.label}: ${typeof rawValue === "number" ? rawValue.toFixed(1) : rawValue} ${unit}`;
           },
@@ -448,9 +524,7 @@ export default function FentonChart({ gender, patientData }: FentonChartProps) {
       y: {
         min: Y_MIN,
         max: Y_MAX,
-        title: {
-          display: false,
-        },
+        title: { display: false },
         ticks: {
           values: yTickValues,
           autoSkip: false,
@@ -472,9 +546,7 @@ export default function FentonChart({ gender, patientData }: FentonChartProps) {
         position: "right",
         min: Y_MIN,
         max: Y_MAX,
-        title: {
-          display: false,
-        },
+        title: { display: false },
         ticks: {
           values: yTickValues,
           autoSkip: false,
@@ -497,7 +569,22 @@ export default function FentonChart({ gender, patientData }: FentonChartProps) {
 
   return (
     <div style={{ width: "100%", minHeight: 920 }}>
-      <Line data={data} options={options} plugins={[fentonBackgroundPlugin]} />
+      {!showReference && (
+        <p style={{
+          textAlign: "center",
+          color: "#ef4444",
+          fontSize: 13,
+          marginBottom: 8,
+          fontWeight: 600,
+        }}>
+          Select a gender to display Fenton reference curves.
+        </p>
+      )}
+      <Line
+        data={data}
+        options={options}
+        plugins={[fentonBackgroundPlugin]}
+      />
     </div>
   );
 }

@@ -7,20 +7,20 @@ import FentonChart from "./FentonChart";
 import {
   FENTON_WEIGHT_BOYS, FENTON_WEIGHT_GIRLS,
   FENTON_LENGTH_BOYS, FENTON_LENGTH_GIRLS,
-  FENTON_HC_BOYS,    FENTON_HC_GIRLS,
+  FENTON_HC_BOYS, FENTON_HC_GIRLS,
   type RefPoint,
 } from "./referenceData";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Gender = "male" | "female" | "";
 
+// REMOVED: gaWeeks field — GA is always auto-calculated from DOB + GA at birth + visit date
 interface Visit {
   id: string;
   date: string;
   height: string;
   weight: string;
   headCirc: string;
-  gaWeeks: string;
 }
 
 interface VisitErrors {
@@ -32,13 +32,12 @@ interface VisitErrors {
 interface ChartPoint {
   week: number;
   weekLabel: string;
-  manualGA?: boolean;
-  height:   number | null;
-  weight:   number | null;
+  height: number | null;
+  weight: number | null;
   headCirc: number | null;
-  l_p3: number|null; l_p15: number|null; l_p50: number|null; l_p85: number|null; l_p97: number|null;
-  hc_p3: number|null; hc_p15: number|null; hc_p50: number|null; hc_p85: number|null; hc_p97: number|null;
-  w_p3: number|null; w_p15: number|null; w_p50: number|null; w_p85: number|null; w_p97: number|null;
+  l_p3: number | null; l_p15: number | null; l_p50: number | null; l_p85: number | null; l_p97: number | null;
+  hc_p3: number | null; hc_p15: number | null; hc_p50: number | null; hc_p85: number | null; hc_p97: number | null;
+  w_p3: number | null; w_p15: number | null; w_p50: number | null; w_p85: number | null; w_p97: number | null;
 }
 
 
@@ -58,7 +57,7 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
   const t = (x - lo.x) / (hi.x - lo.x);
   const lerp = (a: number, b: number) => parseFloat((a + t * (b - a)).toFixed(2));
   return {
-    p3:  lerp(lo.p3,  hi.p3),
+    p3: lerp(lo.p3, hi.p3),
     p15: lerp(lo.p15, hi.p15),
     p50: lerp(lo.p50, hi.p50),
     p85: lerp(lo.p85, hi.p85),
@@ -72,60 +71,49 @@ function cgaWeek(dob: string, gaAtBirth: number, visitDate: string): number {
   return gaAtBirth + postnatalWeeks;
 }
 
-function cgaWeekDisplay(dob: string, gaAtBirth: string, visitDate: string): string {
-  if (!dob || !visitDate) return "—";
-  const ga = parseFloat(gaAtBirth) || 40;
-  return cgaWeek(dob, ga, visitDate).toFixed(1);
-}
+// REMOVED: cgaWeekDisplay — no longer needed since the input field is gone
 
 function buildChartData(visits: Visit[], dob: string, gaAtBirth: number, gender: Gender): ChartPoint[] {
   const male = gender !== "female";
-  const lRef  = male ? FENTON_LENGTH_BOYS  : FENTON_LENGTH_GIRLS;
-  const hcRef = male ? FENTON_HC_BOYS      : FENTON_HC_GIRLS;
-  const wRef  = male ? FENTON_WEIGHT_BOYS  : FENTON_WEIGHT_GIRLS;
+  const lRef = male ? FENTON_LENGTH_BOYS : FENTON_LENGTH_GIRLS;
+  const hcRef = male ? FENTON_HC_BOYS : FENTON_HC_GIRLS;
+  const wRef = male ? FENTON_WEIGHT_BOYS : FENTON_WEIGHT_GIRLS;
 
-  const refWeeks = [22,24,26,28,30,32,34,36,38,40,42,44,46,48,50];
+  const refWeeks = [22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50];
   const refPoints: ChartPoint[] = refWeeks.map(w => {
-    const l  = interpolate(lRef,  w);
+    const l = interpolate(lRef, w);
     const hc = interpolate(hcRef, w);
-    const wt = interpolate(wRef,  w);
+    const wt = interpolate(wRef, w);
     return {
       week: w, weekLabel: `${w}w`,
       height: null, weight: null, headCirc: null,
-      l_p3:  l?.p3  ?? null, l_p15:  l?.p15  ?? null, l_p50:  l?.p50  ?? null, l_p85:  l?.p85  ?? null, l_p97:  l?.p97  ?? null,
+      l_p3: l?.p3 ?? null, l_p15: l?.p15 ?? null, l_p50: l?.p50 ?? null, l_p85: l?.p85 ?? null, l_p97: l?.p97 ?? null,
       hc_p3: hc?.p3 ?? null, hc_p15: hc?.p15 ?? null, hc_p50: hc?.p50 ?? null, hc_p85: hc?.p85 ?? null, hc_p97: hc?.p97 ?? null,
-      w_p3:  wt?.p3 ?? null, w_p15:  wt?.p15 ?? null, w_p50:  wt?.p50 ?? null, w_p85:  wt?.p85 ?? null, w_p97:  wt?.p97 ?? null,
+      w_p3: wt?.p3 ?? null, w_p15: wt?.p15 ?? null, w_p50: wt?.p50 ?? null, w_p85: wt?.p85 ?? null, w_p97: wt?.p97 ?? null,
     };
   });
 
   const visitPoints: ChartPoint[] = visits
     .filter(v => v.date && dob)
     .map(v => {
-      const cga = v.gaWeeks && parseFloat(v.gaWeeks) > 0
-        ? parseFloat(v.gaWeeks)
-        : cgaWeek(dob, gaAtBirth, v.date);
-      const l  = interpolate(lRef,  cga);
+      // GA is always auto-calculated — no manual gaWeeks override
+      const cga = cgaWeek(dob, gaAtBirth, v.date);
+      const l = interpolate(lRef, cga);
       const hc = interpolate(hcRef, cga);
-      const wt = interpolate(wRef,  cga);
+      const wt = interpolate(wRef, cga);
       return {
         week: parseFloat(cga.toFixed(1)),
         weekLabel: `${cga.toFixed(1)}w\n${formatDate(v.date)}`,
-        manualGA: !!(v.gaWeeks && parseFloat(v.gaWeeks) > 0),
-        height:   v.height   ? parseFloat(v.height)   : null,
-        weight:   v.weight   ? parseFloat(v.weight)   : null,
+        height: v.height ? parseFloat(v.height) : null,
+        weight: v.weight ? parseFloat(v.weight) : null,
         headCirc: v.headCirc ? parseFloat(v.headCirc) : null,
-        l_p3:  l?.p3  ?? null, l_p15:  l?.p15  ?? null, l_p50:  l?.p50  ?? null, l_p85:  l?.p85  ?? null, l_p97:  l?.p97  ?? null,
+        l_p3: l?.p3 ?? null, l_p15: l?.p15 ?? null, l_p50: l?.p50 ?? null, l_p85: l?.p85 ?? null, l_p97: l?.p97 ?? null,
         hc_p3: hc?.p3 ?? null, hc_p15: hc?.p15 ?? null, hc_p50: hc?.p50 ?? null, hc_p85: hc?.p85 ?? null, hc_p97: hc?.p97 ?? null,
-        w_p3:  wt?.p3 ?? null, w_p15:  wt?.p15 ?? null, w_p50:  wt?.p50 ?? null, w_p85:  wt?.p85 ?? null, w_p97:  wt?.p97 ?? null,
+        w_p3: wt?.p3 ?? null, w_p15: wt?.p15 ?? null, w_p50: wt?.p50 ?? null, w_p85: wt?.p85 ?? null, w_p97: wt?.p97 ?? null,
       };
     });
 
-  // Visit points are always kept as separate distinct entries.
-  // Reference grid points (height/weight/headCirc all null) are kept
-  // purely for drawing the percentile curves — never merged with visits.
-  // This prevents two visits near the same reference week from colliding.
   const merged = [...refPoints, ...visitPoints];
-
   return merged.sort((a, b) => a.week - b.week);
 }
 
@@ -149,13 +137,14 @@ export default function GrowChart() {
   function addVisit() {
     setHomeForm(prev => ({
       ...prev,
-      visits: [...prev.visits, { id: newId(), date: "", height: "", weight: "", headCirc: "", gaWeeks: "" }],
+      // REMOVED: gaWeeks from new visit template
+      visits: [...prev.visits, { id: newId(), date: "", height: "", weight: "", headCirc: "" }],
     }));
   }
   function removeVisit(id: string) {
     setHomeForm(prev => ({ ...prev, visits: prev.visits.filter(v => v.id !== id) }));
   }
-  function updateVisit(id: string, field: keyof Omit<Visit,"id">, value: string) {
+  function updateVisit(id: string, field: keyof Omit<Visit, "id">, value: string) {
     setHomeForm(prev => ({
       ...prev,
       visits: prev.visits.map(v => v.id === id ? { ...v, [field]: value } : v),
@@ -176,7 +165,12 @@ export default function GrowChart() {
     setPatient({ patientName, dob, gender, gaAtBirth, visits });
   }
   function handleReset() {
-    setHomeForm({ patientName: "", dob: "", gender: "", gaAtBirth: "", visits: [{ id: newId(), date: "", height: "", weight: "", headCirc: "", gaWeeks: "" }], plotted: false });
+    setHomeForm({
+      patientName: "", dob: "", gender: "", gaAtBirth: "",
+      // REMOVED: gaWeeks from reset template
+      visits: [{ id: newId(), date: "", height: "", weight: "", headCirc: "" }],
+      plotted: false,
+    });
     setChartData([]);
     setVisitErrors({});
   }
@@ -203,7 +197,8 @@ export default function GrowChart() {
             <h2 style={s.sectionTitle}>Patient Info</h2>
             <div style={s.field}>
               <label style={s.label}>Patient Name</label>
-              <input style={s.input} type="text" placeholder="Full name" value={patientName} onChange={e => setHomeForm(prev => ({ ...prev, patientName: e.target.value }))} />
+              <input style={s.input} type="text" placeholder="Full name" value={patientName}
+                onChange={e => setHomeForm(prev => ({ ...prev, patientName: e.target.value }))} />
             </div>
             <div style={s.field}>
               <label style={s.label}>Date of Birth</label>
@@ -215,8 +210,8 @@ export default function GrowChart() {
                 showMonthDropdown
                 showYearDropdown
                 dropdownMode="select"
-                yearDropdownItemNumber={10}  
-                scrollableYearDropdown  
+                yearDropdownItemNumber={10}
+                scrollableYearDropdown
                 maxDate={new Date()}
                 isClearable
                 todayButton="Today"
@@ -226,12 +221,13 @@ export default function GrowChart() {
             <div style={s.field}>
               <label style={s.label}>GA at Birth (weeks)</label>
               <input style={s.input} type="number" placeholder="e.g. 28" value={gaAtBirth}
-                onChange={e => setHomeForm(prev => ({ ...prev, gaAtBirth: e.target.value }))} min="22" max="44" step="1" />
+                onChange={e => setHomeForm(prev => ({ ...prev, gaAtBirth: e.target.value }))}
+                min="22" max="44" step="1" />
             </div>
             <div style={s.field}>
               <label style={s.label}>Gender</label>
               <div style={s.genderRow}>
-                {(["male","female"] as const).map(g => (
+                {(["male", "female"] as const).map(g => (
                   <button key={g} type="button" onClick={() => setHomeForm(prev => ({ ...prev, gender: g }))}
                     style={{ ...s.genderBtn, ...(gender === g ? (g === "male" ? s.gMale : s.gFemale) : {}) }}>
                     {g === "male" ? "♂ Male" : "♀ Female"}
@@ -253,8 +249,11 @@ export default function GrowChart() {
                   <div key={v.id} style={s.visitCard}>
                     <div style={s.visitCardHeader}>
                       <span style={s.visitLabel}>Visit {idx + 1}</span>
-                      {visits.length > 1 && <button type="button" onClick={() => removeVisit(v.id)} style={s.removeBtn}>✕</button>}
+                      {visits.length > 1 && (
+                        <button type="button" onClick={() => removeVisit(v.id)} style={s.removeBtn}>✕</button>
+                      )}
                     </div>
+
                     <div style={s.field}>
                       <label style={s.label}>Date</label>
                       <DatePicker
@@ -272,23 +271,39 @@ export default function GrowChart() {
                         customInput={<input style={s.input} />}
                       />
                     </div>
-                    <div style={s.field}>
-                      <label style={s.label}>GA at Visit (weeks)</label>
-                      <input style={s.input} type="number" placeholder="e.g. 32" value={v.gaWeeks} onChange={e => updateVisit(v.id, "gaWeeks", e.target.value)} min="22" max="50" step="0.1" />
-                    </div>
+
+                    {/* REMOVED: GA at Visit (weeks) input — auto-calculated from DOB + GA at birth + visit date */}
+
+                    {/* Optional: show the computed CGA as read-only info when date is set */}
+                    {v.date && dob && gaAtBirth && (
+                      <div style={s.field}>
+                        <label style={s.label}>Corrected GA (auto)</label>
+                        <div style={s.cgaDisplay}>
+                          {cgaWeek(dob, parseFloat(gaAtBirth) || 40, v.date).toFixed(1)}w
+                        </div>
+                      </div>
+                    )}
+
                     <div style={s.row}>
                       <div style={{ ...s.field, flex: 1 }}>
                         <label style={s.label}>Length (cm)</label>
-                        <input style={s.input} type="number" placeholder="cm" value={v.height} onChange={e => updateVisit(v.id,"height",e.target.value)} />
+                        <input style={s.input} type="number" placeholder="cm" value={v.height}
+                          onChange={e => updateVisit(v.id, "height", e.target.value)} />
                       </div>
                       <div style={{ ...s.field, flex: 1 }}>
                         <label style={s.label}>Weight (kg)</label>
-                        <input style={s.input} type="number" placeholder="kg" value={v.weight} onChange={e => updateVisit(v.id,"weight",e.target.value)} step="0.01" />
+                        <input style={s.input} type="number" placeholder="kg" value={v.weight}
+                          onChange={e => updateVisit(v.id, "weight", e.target.value)} step="0.01" />
                       </div>
                     </div>
+
                     <div style={s.field}>
                       <label style={s.label}>Head Circ. (cm)</label>
-                      <input style={s.input} type="number" placeholder="cm" value={v.headCirc} onChange={e => updateVisit(v.id,"headCirc",e.target.value)} />
+                      {visitErrors[v.id]?.headCirc && (
+                        <span style={s.errorText}>{visitErrors[v.id].headCirc}</span>
+                      )}
+                      <input style={s.input} type="number" placeholder="cm" value={v.headCirc}
+                        onChange={e => updateVisit(v.id, "headCirc", e.target.value)} />
                     </div>
                   </div>
                 ))}
@@ -349,44 +364,38 @@ function Placeholder() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s: Record<string, React.CSSProperties> = {
-  page:        { minHeight: "calc(100vh - 52px)", backgroundColor: "#f8fafc", padding: "24px", fontFamily: "system-ui, sans-serif", boxSizing: "border-box", width: "100%" },
-  wrapper:     { maxWidth: "100%", margin: "0 auto" },
-  header:      { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" },
+  page: { minHeight: "calc(100vh - 52px)", backgroundColor: "#f8fafc", padding: "24px", fontFamily: "system-ui, sans-serif", boxSizing: "border-box", width: "100%" },
+  wrapper: { maxWidth: "100%", margin: "0 auto" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" },
   patientBadge: { backgroundColor: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "8px 16px" },
   patientName: { fontWeight: 700, fontSize: "14px", color: "#0f172a" },
-  patientDob:  { fontSize: "12px", color: "#475569", marginLeft: 8 },
-  body:        { display: "flex", gap: "20px", alignItems: "flex-start", width: "100%" },
-  formCard:    { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "20px", width: "300px", flexShrink: 0, display: "flex", flexDirection: "column", gap: "12px" },
-  chartCard:   { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "24px", flex: 1, minWidth: 0 },
+  patientDob: { fontSize: "12px", color: "#475569", marginLeft: 8 },
+  body: { display: "flex", gap: "20px", alignItems: "flex-start", width: "100%" },
+  formCard: { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "20px", width: "300px", flexShrink: 0, display: "flex", flexDirection: "column", gap: "12px" },
+  chartCard: { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "24px", flex: 1, minWidth: 0 },
   sectionTitle: { margin: 0, fontSize: "14px", fontWeight: 700, color: "#0f172a" },
-  field:       { display: "flex", flexDirection: "column", gap: "4px" },
-  row:         { display: "flex", gap: "8px" },
-  label:       { fontSize: "11px", fontWeight: 600, color: "#475569" },
-  input:       { padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", color: "#0f172a", width: "100%", boxSizing: "border-box" },
-  divider:     { borderTop: "1px solid #e2e8f0", margin: "4px 0" },
-  genderRow:   { display: "flex", gap: "8px" },
-  genderBtn:   { flex: 1, padding: "8px 0", borderRadius: "6px", border: "1px solid #cbd5e1", backgroundColor: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  gMale:       { backgroundColor: "#eff6ff", borderColor: "#2563eb", color: "#2563eb" },
-  gFemale:     { backgroundColor: "#fdf2f8", borderColor: "#db2777", color: "#db2777" },
+  field: { display: "flex", flexDirection: "column", gap: "4px" },
+  row: { display: "flex", gap: "8px" },
+  label: { fontSize: "11px", fontWeight: 600, color: "#475569" },
+  input: { padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", color: "#0f172a", width: "100%", boxSizing: "border-box" },
+  cgaDisplay: { padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0", fontSize: "13px", color: "#0f172a", backgroundColor: "#f8fafc", fontWeight: 600 },
+  errorText: { fontSize: "11px", color: "#ef4444", fontWeight: 500 },
+  divider: { borderTop: "1px solid #e2e8f0", margin: "4px 0" },
+  genderRow: { display: "flex", gap: "8px" },
+  genderBtn: { flex: 1, padding: "8px 0", borderRadius: "6px", border: "1px solid #cbd5e1", backgroundColor: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  gMale: { backgroundColor: "#eff6ff", borderColor: "#2563eb", color: "#2563eb" },
+  gFemale: { backgroundColor: "#fdf2f8", borderColor: "#db2777", color: "#db2777" },
   visitsHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  addBtn:      { padding: "4px 12px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer" },
-  visitList:   { display: "flex", flexDirection: "column", gap: "10px", maxHeight: "340px", overflowY: "auto" },
-  visitCard:   { border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px", backgroundColor: "#f8fafc" },
+  addBtn: { padding: "4px 12px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer" },
+  visitList: { display: "flex", flexDirection: "column", gap: "10px", maxHeight: "340px", overflowY: "auto" },
+  visitCard: { border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px", backgroundColor: "#f8fafc" },
   visitCardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" },
-  visitLabel:  { fontSize: "12px", fontWeight: 700, color: "#0f172a" },
-  removeBtn:   { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "12px" },
-  btnRow:      { display: "flex", gap: "8px", marginTop: "12px" },
-  btnPrimary:  { flex: 1, padding: "10px", backgroundColor: "#2563eb", color: "#fff", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, cursor: "pointer" },
+  visitLabel: { fontSize: "12px", fontWeight: 700, color: "#0f172a" },
+  removeBtn: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "12px" },
+  btnRow: { display: "flex", gap: "8px", marginTop: "12px" },
+  btnPrimary: { flex: 1, padding: "10px", backgroundColor: "#2563eb", color: "#fff", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, cursor: "pointer" },
   btnSecondary: { flex: 1, padding: "10px", backgroundColor: "#fff", color: "#475569", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer" },
   placeholder: { display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px" },
   placeholderText: { color: "#64748b", fontSize: "14px" },
-  chartHeader: { marginBottom: "16px" },
-  chartTitle:  { margin: "0 0 4px", fontSize: "18px", fontWeight: 700, color: "#0f172a" },
-  chartSub:    { margin: 0, fontSize: "12px", color: "#475569" },
-  legendBox:   { display: "flex", gap: "16px", marginTop: "8px" },
-  zoomBar:     { display: "flex", gap: "6px", marginBottom: "12px" },
-  zoomBtn:     { width: "32px", height: "32px", border: "1px solid #cbd5e1", backgroundColor: "#fff", borderRadius: "6px", cursor: "pointer", fontWeight: "bold" },
-  zoomDivider: { width: "1px", height: "32px", backgroundColor: "#e2e8f0" },
-  resetZoomBtn: { padding: "0 12px", border: "1px solid #cbd5e1", backgroundColor: "#fff", borderRadius: "6px", cursor: "pointer", fontSize: "12px" },
-  detailBtn:   { padding: "8px 16px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600 },
+  detailBtn: { padding: "8px 16px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600 },
 };
