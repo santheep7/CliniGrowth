@@ -7,8 +7,8 @@ export default function Navbar() {
   const { patient } = useGrowchart();
 
   const links = [
-    { path: "/",       label: "Growth Chart" },
-    { path: "/detail", label: "Individual Charts" },
+    { path: "/",       label: "Fenton Chart" },
+    { path: "/detail", label: "WHO chart" },
   ];
 
   return (

@@ -504,7 +504,7 @@ export default function GrowChart() {
                   onMouseEnter={e => gsap.to(e.currentTarget, { x: 3, duration: 0.2 })}
                   onMouseLeave={e => gsap.to(e.currentTarget, { x: 0, duration: 0.2 })}
                 >
-                  View Individual Charts →
+                  WHO Charts →
                 </button>
               </div>
             )}

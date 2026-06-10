@@ -519,7 +519,7 @@ export default function FentonChart({ gender, patientData }: FentonChartProps) {
             const unit = ctx.dataset.label?.toLowerCase().includes("weight") ? "kg" : "cm";
             return `${ctx.dataset.label}: ${typeof rawValue === "number" ? rawValue.toFixed(1) : rawValue} ${unit}`;
           },
-        },
+        }
       },
     },
     layout: {
