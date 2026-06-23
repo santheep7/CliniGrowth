@@ -168,11 +168,15 @@ export const WHO_LENGTH_BOYS: RefPoint[] = [
 ];
 
 // ── WHO Length/Height GIRLS (cm) ──────────────────────────────────────────────
+// FIX: x for the 4-month row corrected from 58.4 -> 57.4 to match the same
+// nominal age point used in WHO_WEIGHT_GIRLS, WHO_HC_GIRLS, and WHO_LENGTH_BOYS.
+// (58.4 was a copy-paste typo that shifted this one interpolation segment by
+// roughly a full week relative to weight/HC at the same nominal age.)
 export const WHO_LENGTH_GIRLS: RefPoint[] = [
   { x: 40,    p3: 45.4, p15: 47.0, p50: 49.1, p85: 51.0, p97: 52.7 },  // Birth
   { x: 44.3,  p3: 50.0, p15: 51.7, p50: 53.7, p85: 55.6, p97: 57.4 },  // 1 mo
   { x: 48.7,  p3: 53.2, p15: 55.0, p50: 57.1, p85: 59.1, p97: 60.9 },  // 2 mo
-  { x: 58.4,  p3: 58.4, p15: 60.3, p50: 62.1, p85: 64.3, p97: 66.2 },  // 4 mo
+  { x: 57.4,  p3: 58.4, p15: 60.3, p50: 62.1, p85: 64.3, p97: 66.2 },  // 4 mo  // FIX: x was 58.4
   { x: 66.1,  p3: 61.5, p15: 63.5, p50: 65.7, p85: 67.9, p97: 69.8 },  // 6 mo
   { x: 79.1,  p3: 65.6, p15: 67.7, p50: 70.1, p85: 72.4, p97: 74.5 },  // 9 mo
   { x: 92.2,  p3: 68.9, p15: 71.4, p50: 74.0, p85: 76.6, p97: 79.2 },  // 12 mo

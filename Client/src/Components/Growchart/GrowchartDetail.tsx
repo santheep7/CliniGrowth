@@ -275,6 +275,8 @@ function MetricChart({ data, yLabel, yStep, yMin, genderView, gaAtBirth, chartTy
   chartType: ChartType;
   height?: number; // Added optional height prop
 }) {
+  // Inside the MetricChart component, right before "const options = {"
+  const axisColor = genderView === "female" ? "#db2777" : "#2563eb"; // Pink for girls, Blue for boys
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -320,17 +322,33 @@ function MetricChart({ data, yLabel, yStep, yMin, genderView, gaAtBirth, chartTy
           const customTicks: { value: number }[] = [];
           customTicks.push({ value: gaAtBirth });
           
-          for (let y = 1; y <= 5; y++) {
-            customTicks.push({ value: gaAtBirth + y * 52 });
+          for (let y = 0; y < 5; y++) {
+            if (y > 0) {
+              customTicks.push({ value: gaAtBirth + y * 52 });
+            }
+            
+            // Add ticks for months 2, 4, 6, 8, 10
+            [2, 4, 6, 8, 10].forEach(m => {
+              customTicks.push({ value: gaAtBirth + y * 52 + m * (52 / 12) });
+            });
           }
+          customTicks.push({ value: gaAtBirth + 5 * 52 });
+          
           axis.ticks = customTicks;
         },
         ticks: {
-          color: "#475569",
+          color: axisColor,
           autoSkip: false,
           maxRotation: 0,
-          font: () => {
-            return { size: 11, weight: "bold" as const };
+          font: (context) => {
+            const v = Number(context.tick?.value || 0);
+            const isYearOrBirth = Math.abs(v - gaAtBirth) < 0.5 || Math.abs((v - gaAtBirth) % 52) < 0.5;
+            
+            /* 🌟 Update this return statement right here 🌟 */
+            return { 
+              size: isYearOrBirth ? 12 : 9.5, // 12 for Birth/Years, 9.5 for Months
+              weight: isYearOrBirth ? ("bold" as const) : ("normal" as const) 
+            };
           },
           callback: (value: number | string) => {
             const v = Number(value);
@@ -341,8 +359,14 @@ function MetricChart({ data, yLabel, yStep, yMin, genderView, gaAtBirth, chartTy
             if (v > gaAtBirth) {
               const weeksPast = v - gaAtBirth;
               const years = Math.round(weeksPast / 52);
+              const months = Math.round((weeksPast % 52) / (52 / 12));
+              
               if (Math.abs(weeksPast - years * 52) < eps) {
-                return `${years} yr`;
+                return [`${years}`, "yr"];
+              } 
+              // Label the even months
+              else if ([2, 4, 6, 8, 10].includes(months)) {
+                return `${months}`;
               }
             }
             return "";
@@ -356,7 +380,7 @@ function MetricChart({ data, yLabel, yStep, yMin, genderView, gaAtBirth, chartTy
           : yMin, 
         max: maxY,
         title: { display: true, text: yLabel, color: "#475569", font: { size: 12, weight: "bold" as const } },
-        ticks: { stepSize: yStep, color: "#475569", font: { size: 11 } },
+        ticks: { stepSize: yStep, color: axisColor, font: { size: 11 } },
         grid: { color: "#e8ebef" },
       },
     },
@@ -676,7 +700,7 @@ export default function GrowchartDetail() {
                 <div style={s.genderFilterContainer}>
                   <span style={s.filterLabel}>Reference Dataset:</span>
                   <div style={s.segmentedControl}>
-                    {(["male", "female", "both"] as GenderView[]).map(v => {
+                    {(["male", "female"] as GenderView[]).map(v => {
                       const isActive = genderView === v;
                       return (
                         <button
@@ -697,49 +721,135 @@ export default function GrowchartDetail() {
             </div>
 
             {/* Chart Area Viewport */}
+            {/* Chart Area Viewport */}
+            {/* Chart Area Viewport */}
+            {/* Chart Area Viewport */}
+            {/* Chart Area Viewport */}
             <div ref={chartCardRef} style={s.chartCard}>
+              
+              {/* Clean Header Row: Just the Title and Standard Badge */}
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "16px",
+                marginBottom: "24px",
+                paddingBottom: "16px",
+                borderBottom: "1px solid #e2e8f0"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <h3 style={{ ...s.chartTitle, margin: 0 }}>
+                    {activeMetric !== "all" ? `${m.label} Percentiles Visualizer` : "All Metrics Visualizer Dashboard"}
+                  </h3>
+                  <span style={s.badge}>{chartType.toUpperCase()} Standard</span>
+                </div>
+              </div>
+
+              {/* ─── Chart Rendering Logic ─── */}
               {activeMetric !== "all" ? (
-                <>
-                  <div style={s.chartHeader}>
-                    <h3 style={s.chartTitle}>{m.label} Percentiles Visualizer</h3>
-                    <span style={s.badge}>{chartType.toUpperCase()} Standard</span>
-                  </div>
-                  <MetricChart
-                    data={chartData}
-                    yLabel={m.yLabel}
-                    yStep={m.yStep}
-                    yMin={m.yMin}
-                    genderView={genderView}
-                    gaAtBirth={ga}
-                    chartType={chartType}
-                  />
-                </>
+                <MetricChart
+                  data={chartData}
+                  yLabel={m.yLabel}
+                  yStep={m.yStep}
+                  yMin={m.yMin}
+                  genderView={genderView}
+                  gaAtBirth={ga}
+                  chartType={chartType}
+                />
               ) : (
                 /* "View All" Grid Dashboard Panel */
-                /* "View All" Grid Dashboard Panel */
-<div style={s.allGrid}>
-  {METRICS.filter(x => x.key !== "all").map(mItem => {
-    const singleData = buildData(visits, dob, ga, mItem.key, chartType);
-    return (
-      <div key={mItem.key} style={s.miniChartWrapper}>
-        <div style={s.chartHeader}>
-          <h4 style={s.miniChartTitle}>{mItem.label} ({mItem.yLabel})</h4>
-        </div>
-        {/* Removed the restrictive parent height div wrapper here */}
-        <MetricChart
-          data={singleData}
-          yLabel={mItem.yLabel}
-          yStep={mItem.yStep}
-          yMin={mItem.yMin}
-          genderView={gender === "female" ? "female" : "male"}
-          gaAtBirth={ga}
-          chartType={chartType}
-          height={350} // Explicitly tell it to scale to 350px in grid mode
-        />
-      </div>
-    );
-  })}
-</div>
+                <div style={{ width: "100%" }}>
+                  
+                  {/* 🌟 NEW: Dedicated Gender Toggle Bar for View All Dashboard 🌟 */}
+                  <div style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    backgroundColor: "#f8fafc",
+                    padding: "12px 16px",
+                    borderRadius: "8px",
+                    border: "1px solid #e2e8f0",
+                    marginBottom: "24px"
+                  }}>
+                    <span style={{ fontSize: "14px", fontWeight: "bold", color: "#475569" }}>
+                      Multi-Chart Reference Standard:
+                    </span>
+                    
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        onClick={() => setGender("male")}
+                        style={{
+                          padding: "8px 16px",
+                          borderRadius: "6px",
+                          border: "1px solid",
+                          borderColor: gender === "male" ? "#2563eb" : "#cbd5e1",
+                          backgroundColor: gender === "male" ? "#2563eb" : "#ffffff",
+                          color: gender === "male" ? "#ffffff" : "#475569",
+                          cursor: "pointer",
+                          fontWeight: "600",
+                          fontSize: "13px",
+                          boxShadow: gender === "male" ? "0 2px 4px rgba(37, 99, 235, 0.2)" : "none",
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        ♂ Boys Only
+                      </button>
+                      <button
+                        onClick={() => setGender("female")}
+                        style={{
+                          padding: "8px 16px",
+                          borderRadius: "6px",
+                          border: "1px solid",
+                          borderColor: gender === "female" ? "#db2777" : "#cbd5e1",
+                          backgroundColor: gender === "female" ? "#db2777" : "#ffffff",
+                          color: gender === "female" ? "#ffffff" : "#475569",
+                          cursor: "pointer",
+                          fontWeight: "600",
+                          fontSize: "13px",
+                          boxShadow: gender === "female" ? "0 2px 4px rgba(219, 39, 119, 0.2)" : "none",
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        ♀ Girls Only
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* The Charts Grid Container */}
+                  <div style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "center", 
+                    gap: "24px"
+                  }}>
+                    {METRICS.filter(x => x.key !== "all").map(mItem => {
+                      const singleData = buildData(visits, dob, ga, mItem.key, chartType);
+                      return (
+                        <div key={mItem.key} style={{
+                          ...s.miniChartWrapper,
+                          flex: "1 1 calc(50% - 12px)", 
+                          minWidth: "500px",            
+                          maxWidth: "100%"              
+                        }}>
+                          <div style={s.chartHeader}>
+                            <h4 style={s.miniChartTitle}>{mItem.label} ({mItem.yLabel})</h4>
+                          </div>
+                          <MetricChart
+                            data={singleData}
+                            yLabel={mItem.yLabel}
+                            yStep={mItem.yStep}
+                            yMin={mItem.yMin}
+                            genderView={gender === "female" ? "female" : "male"}
+                            gaAtBirth={ga}
+                            chartType={chartType}
+                            height={450} 
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
 

@@ -1,10 +1,15 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import DatePicker from "react-datepicker";
+// @ts-ignore: CSS module side-effect import declaration is not available in this project.
 import "react-datepicker/dist/react-datepicker.css";
 import { gsap } from "gsap";
 import { useGrowchart } from "./GrowchartContext";
 import FentonChart from "./FentonChart";
+import WHOChartMini from "./WHOChartMini";
+import CollapsibleSidebar from "./CollapsibleSidebar";
+
+
 import {
   FENTON_WEIGHT_BOYS, FENTON_WEIGHT_GIRLS,
   FENTON_LENGTH_BOYS, FENTON_LENGTH_GIRLS,
@@ -12,23 +17,16 @@ import {
   type RefPoint,
 } from "./referenceData";
 
-// ─── Inject animation CSS once (prevents React inline-style from fighting GSAP) ──
+
+// ─── Inject animation CSS once ────────────────────────────────────────────────
 if (typeof document !== "undefined" && !document.getElementById("growchart-anim-css")) {
   const tag = document.createElement("style");
   tag.id = "growchart-anim-css";
   tag.textContent = `
-    .gc-visit-card {
-      will-change: transform, opacity;
-    }
-    .gc-form-card {
-      will-change: transform, opacity;
-    }
-    .gc-chart-card {
-      will-change: transform, opacity;
-    }
-    .gc-badge {
-      will-change: transform, opacity;
-    }
+    .gc-visit-card { will-change: transform, opacity; }
+    .gc-form-card  { will-change: transform, opacity; }
+    .gc-chart-card { will-change: transform, opacity; }
+    .gc-badge      { will-change: transform, opacity; }
   `;
   document.head.appendChild(tag);
 }
@@ -93,21 +91,21 @@ function cgaWeek(dob: string, gaAtBirth: number, visitDate: string): number {
 
 function buildChartData(visits: Visit[], dob: string, gaAtBirth: number, gender: Gender): ChartPoint[] {
   const male = gender !== "female";
-  const lRef = male ? FENTON_LENGTH_BOYS : FENTON_LENGTH_GIRLS;
-  const hcRef = male ? FENTON_HC_BOYS : FENTON_HC_GIRLS;
-  const wRef = male ? FENTON_WEIGHT_BOYS : FENTON_WEIGHT_GIRLS;
+  const lRef  = male ? FENTON_LENGTH_BOYS : FENTON_LENGTH_GIRLS;
+  const hcRef = male ? FENTON_HC_BOYS     : FENTON_HC_GIRLS;
+  const wRef  = male ? FENTON_WEIGHT_BOYS : FENTON_WEIGHT_GIRLS;
 
   const refWeeks = [22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50];
   const refPoints: ChartPoint[] = refWeeks.map(w => {
-    const l = interpolate(lRef, w);
+    const l  = interpolate(lRef,  w);
     const hc = interpolate(hcRef, w);
-    const wt = interpolate(wRef, w);
+    const wt = interpolate(wRef,  w);
     return {
       week: w, weekLabel: `${w}w`,
       height: null, weight: null, headCirc: null,
-      l_p3: l?.p3 ?? null, l_p15: l?.p15 ?? null, l_p50: l?.p50 ?? null, l_p85: l?.p85 ?? null, l_p97: l?.p97 ?? null,
+      l_p3:  l?.p3  ?? null, l_p15:  l?.p15  ?? null, l_p50:  l?.p50  ?? null, l_p85:  l?.p85  ?? null, l_p97:  l?.p97  ?? null,
       hc_p3: hc?.p3 ?? null, hc_p15: hc?.p15 ?? null, hc_p50: hc?.p50 ?? null, hc_p85: hc?.p85 ?? null, hc_p97: hc?.p97 ?? null,
-      w_p3: wt?.p3 ?? null, w_p15: wt?.p15 ?? null, w_p50: wt?.p50 ?? null, w_p85: wt?.p85 ?? null, w_p97: wt?.p97 ?? null,
+      w_p3:  wt?.p3 ?? null, w_p15:  wt?.p15 ?? null, w_p50:  wt?.p50 ?? null, w_p85:  wt?.p85 ?? null, w_p97:  wt?.p97 ?? null,
     };
   });
 
@@ -115,25 +113,25 @@ function buildChartData(visits: Visit[], dob: string, gaAtBirth: number, gender:
     .filter(v => v.date && dob)
     .map(v => {
       const cga = cgaWeek(dob, gaAtBirth, v.date);
-      const l = interpolate(lRef, cga);
+      const l  = interpolate(lRef,  cga);
       const hc = interpolate(hcRef, cga);
-      const wt = interpolate(wRef, cga);
+      const wt = interpolate(wRef,  cga);
       return {
         week: parseFloat(cga.toFixed(1)),
         weekLabel: `${cga.toFixed(1)}w\n${formatDate(v.date)}`,
-        height: v.height ? parseFloat(v.height) : null,
-        weight: v.weight ? parseFloat(v.weight) : null,
+        height:   v.height   ? parseFloat(v.height)   : null,
+        weight:   v.weight   ? parseFloat(v.weight)   : null,
         headCirc: v.headCirc ? parseFloat(v.headCirc) : null,
-        l_p3: l?.p3 ?? null, l_p15: l?.p15 ?? null, l_p50: l?.p50 ?? null, l_p85: l?.p85 ?? null, l_p97: l?.p97 ?? null,
+        l_p3:  l?.p3  ?? null, l_p15:  l?.p15  ?? null, l_p50:  l?.p50  ?? null, l_p85:  l?.p85  ?? null, l_p97:  l?.p97  ?? null,
         hc_p3: hc?.p3 ?? null, hc_p15: hc?.p15 ?? null, hc_p50: hc?.p50 ?? null, hc_p85: hc?.p85 ?? null, hc_p97: hc?.p97 ?? null,
-        w_p3: wt?.p3 ?? null, w_p15: wt?.p15 ?? null, w_p50: wt?.p50 ?? null, w_p85: wt?.p85 ?? null, w_p97: wt?.p97 ?? null,
+        w_p3:  wt?.p3 ?? null, w_p15:  wt?.p15 ?? null, w_p50:  wt?.p50 ?? null, w_p85:  wt?.p85 ?? null, w_p97:  wt?.p97 ?? null,
       };
     });
 
   return [...refPoints, ...visitPoints].sort((a, b) => a.week - b.week);
 }
 
-// ─── VisitCard — own component so useLayoutEffect fires after mount ───────────
+// ─── VisitCard ────────────────────────────────────────────────────────────────
 interface VisitCardProps {
   v: Visit;
   idx: number;
@@ -145,24 +143,28 @@ interface VisitCardProps {
   onRemove: (id: string) => void;
   onUpdate: (id: string, field: keyof Omit<Visit, "id">, value: string) => void;
   onAnimateOut: (id: string, el: HTMLDivElement) => void;
+  // FIX 4: callback to clear newVisitId after animation completes
+  onAnimateInDone: () => void;
 }
 
-function VisitCard({ v, idx, isNew, canRemove, dob, gaAtBirth, errors, onRemove, onUpdate, onAnimateOut }: VisitCardProps) {
+function VisitCard({ v, idx, isNew, canRemove, dob, gaAtBirth, errors, onRemove, onUpdate, onAnimateOut, onAnimateInDone }: VisitCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Animate in when this card first mounts
   useEffect(() => {
     if (isNew && cardRef.current) {
       gsap.fromTo(
         cardRef.current,
         { opacity: 0, y: 22, scale: 0.94 },
-        { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "back.out(1.6)", clearProps: "transform" }
+        {
+          opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "back.out(1.6)", clearProps: "transform",
+          // FIX 4: clear newVisitId once the animate-in is done
+          onComplete: onAnimateInDone,
+        }
       );
     } else if (cardRef.current) {
-      // Make sure existing cards are visible (initial load)
       gsap.set(cardRef.current, { opacity: 1, y: 0, scale: 1 });
     }
-  }, []); // runs once on mount
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleRemove() {
     if (cardRef.current) onAnimateOut(v.id, cardRef.current);
@@ -170,12 +172,7 @@ function VisitCard({ v, idx, isNew, canRemove, dob, gaAtBirth, errors, onRemove,
   }
 
   return (
-    <div
-      ref={cardRef}
-      className="gc-visit-card"
-      data-visit-id={v.id}
-      style={s.visitCard}
-    >
+    <div ref={cardRef} className="gc-visit-card" data-visit-id={v.id} style={s.visitCard}>
       <div style={s.visitCardHeader}>
         <span style={s.visitLabel}>Visit {idx + 1}</span>
         {canRemove && (
@@ -192,11 +189,8 @@ function VisitCard({ v, idx, isNew, canRemove, dob, gaAtBirth, errors, onRemove,
           }
           dateFormat="dd MMM yyyy"
           placeholderText="Select date"
-          showMonthDropdown
-          showYearDropdown
-          dropdownMode="select"
-          isClearable
-          todayButton="Today"
+          showMonthDropdown showYearDropdown dropdownMode="select"
+          isClearable todayButton="Today"
           minDate={dob ? new Date(dob) : undefined}
           maxDate={new Date()}
           customInput={<input style={s.input} />}
@@ -244,8 +238,14 @@ export default function GrowChart() {
   const { patientName, dob, gender, gaAtBirth, plotted } = homeForm;
   const visits = homeForm.visits;
 
-  // Track which visit id was just added so VisitCard knows to animate in
   const [newVisitId, setNewVisitId] = useState<string | null>(null);
+
+  // FIX 2: termWeek now lives in homeForm so it persists across resets and
+  // survives context round-trips. Add `termWeek` to your homeForm type/context.
+  const termWeek: number = (homeForm as any).termWeek ?? 40;
+  function setTermWeek(v: number) {
+    setHomeForm(prev => ({ ...prev, termWeek: v } as any));
+  }
 
   const [chartData, setChartData] = useState<ChartPoint[]>(() => {
     if (!homeForm.plotted || !homeForm.dob) return [];
@@ -256,21 +256,17 @@ export default function GrowChart() {
   const [visitErrors, setVisitErrors] = useState<Record<string, VisitErrors>>({});
 
   // ─── GSAP refs ──────────────────────────────────────────────────────────────
-  const pageRef = useRef<HTMLDivElement>(null);
-  const formCardRef = useRef<HTMLDivElement>(null);
-  const chartCardRef = useRef<HTMLDivElement>(null);
+  const pageRef        = useRef<HTMLDivElement>(null);
+  const formCardRef    = useRef<HTMLDivElement>(null);
+  const chartCardRef   = useRef<HTMLDivElement>(null);
   const patientBadgeRef = useRef<HTMLDivElement>(null);
-  const plotBtnRef = useRef<HTMLButtonElement>(null);
+  const plotBtnRef     = useRef<HTMLButtonElement>(null);
 
   // ── Page mount animation ────────────────────────────────────────────────────
   useEffect(() => {
     const ctx = gsap.context(() => {
-      gsap.from(formCardRef.current, {
-        x: -40, opacity: 0, duration: 0.7, ease: "power3.out",
-      });
-      gsap.from(chartCardRef.current, {
-        x: 40, opacity: 0, duration: 0.7, ease: "power3.out", delay: 0.15,
-      });
+      gsap.from(formCardRef.current,  { x: -40, opacity: 0, duration: 0.7, ease: "power3.out" });
+      gsap.from(chartCardRef.current, { x:  40, opacity: 0, duration: 0.7, ease: "power3.out", delay: 0.15 });
     }, pageRef);
     return () => ctx.revert();
   }, []);
@@ -308,18 +304,11 @@ export default function GrowChart() {
   }
 
   function handleAnimateOut(id: string, el: HTMLDivElement) {
-    // Lock the element's current height so collapse is smooth
     const h = el.offsetHeight;
     gsap.set(el, { height: h, overflow: "hidden" });
     gsap.to(el, {
-      opacity: 0,
-      x: -24,
-      height: 0,
-      paddingTop: 0,
-      paddingBottom: 0,
-      marginBottom: 0,
-      duration: 0.32,
-      ease: "power2.in",
+      opacity: 0, x: -24, height: 0, paddingTop: 0, paddingBottom: 0, marginBottom: 0,
+      duration: 0.32, ease: "power2.in",
       onComplete: () => {
         setHomeForm(prev => ({ ...prev, visits: prev.visits.filter(v => v.id !== id) }));
       },
@@ -336,6 +325,9 @@ export default function GrowChart() {
     if (value && field === "headCirc" && num > 55) err = "Max 55 cm";
     setVisitErrors(prev => ({ ...prev, [id]: { ...prev[id], [field]: err } }));
   }
+
+  // FIX 4: stable callback passed to VisitCard to clear newVisitId post-animation
+  const handleAnimateInDone = useCallback(() => setNewVisitId(null), []);
 
   function handlePlot(e: React.FormEvent) {
     e.preventDefault();
@@ -357,12 +349,14 @@ export default function GrowChart() {
 
   function handleReset() {
     if (formCardRef.current) {
-      gsap.timeline()
+      // FIX 5: use onComplete instead of .then() for GSAP timeline callback
+      gsap.timeline({
+        onComplete: doReset,
+      })
         .to(formCardRef.current, { x: -6, duration: 0.07 })
-        .to(formCardRef.current, { x: 6, duration: 0.07 })
+        .to(formCardRef.current, { x:  6, duration: 0.07 })
         .to(formCardRef.current, { x: -4, duration: 0.06 })
-        .to(formCardRef.current, { x: 0, duration: 0.06 })
-        .then(() => doReset());
+        .to(formCardRef.current, { x:  0, duration: 0.06 });
     } else {
       doReset();
     }
@@ -373,7 +367,9 @@ export default function GrowChart() {
       patientName: "", dob: "", gender: "", gaAtBirth: "",
       visits: [{ id: newId(), date: "", height: "", weight: "", headCirc: "" }],
       plotted: false,
-    });
+      // FIX 2: reset termWeek back to 40 alongside the rest of the form
+      termWeek: 40,
+    } as any);
     setChartData([]);
     setVisitErrors({});
     setNewVisitId(null);
@@ -386,9 +382,12 @@ export default function GrowChart() {
       gsap.timeline()
         .to(btn, { scale: 0.92, duration: 0.08 })
         .to(btn, { scale: 1.06, duration: 0.15, ease: "power2.out" })
-        .to(btn, { scale: 1, duration: 0.12, ease: "power1.in" });
+        .to(btn, { scale: 1,    duration: 0.12, ease: "power1.in" });
     }
   }
+
+  // FIX 6: pre-compute clamped value once (removes redundant Number() cast)
+  const splitWeekClamped = Math.max(22, Math.min(50, termWeek));
 
   return (
     <div ref={pageRef} style={s.page}>
@@ -416,11 +415,13 @@ export default function GrowChart() {
         </div>
 
         <div style={s.body}>
-          {/* ── Form card ── */}
-          <div ref={formCardRef} style={s.formCard}>
-            <h2 style={s.sectionTitle}>Patient Info</h2>
+          {/* ── Minimizable form sidebar ── */}
+          <CollapsibleSidebar title="Patient Info" defaultOpen={true}>
+            <div ref={formCardRef} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <h2 style={s.sectionTitle}>Patient Info</h2>
 
-            <div style={s.field}>
+              <div style={s.field}>
+
               <label style={s.label}>Patient Name</label>
               <input style={s.input} type="text" placeholder="Full name" value={patientName}
                 onChange={e => setHomeForm(prev => ({ ...prev, patientName: e.target.value }))} />
@@ -461,6 +462,18 @@ export default function GrowChart() {
               </div>
             </div>
 
+            {/* FIX 1: termWeek field moved OUTSIDE the <form> so Enter doesn't submit */}
+            <div style={s.field}>
+              <label style={s.label}>Show Fenton up to week</label>
+              <input
+                style={s.input}
+                type="number"
+                min={22} max={50} step={1}
+                value={termWeek}
+                onChange={e => setTermWeek(Number(e.target.value))}
+              />
+            </div>
+
             <div style={s.divider} />
 
             <div style={s.visitsHeader}>
@@ -468,6 +481,7 @@ export default function GrowChart() {
               <button type="button" onClick={addVisit} style={s.addBtn}>+ Add</button>
             </div>
 
+            {/* FIX 1: termWeek input is now above this form, so it can't trigger submit */}
             <form onSubmit={handlePlot}>
               <div style={s.visitList}>
                 {homeForm.visits.map((v, idx) => (
@@ -483,6 +497,7 @@ export default function GrowChart() {
                     onRemove={id => setHomeForm(prev => ({ ...prev, visits: prev.visits.filter(x => x.id !== id) }))}
                     onUpdate={updateVisit}
                     onAnimateOut={handleAnimateOut}
+                    onAnimateInDone={handleAnimateInDone}
                   />
                 ))}
               </div>
@@ -492,7 +507,8 @@ export default function GrowChart() {
                 <button type="button" onClick={handleReset} style={s.btnSecondary}>Reset</button>
               </div>
             </form>
-          </div>
+            </div>
+          </CollapsibleSidebar>
 
           {/* ── Chart card ── */}
           <div ref={chartCardRef} style={s.chartCard}>
@@ -508,21 +524,67 @@ export default function GrowChart() {
                 </button>
               </div>
             )}
+
             {!plotted ? (
               <Placeholder />
             ) : (() => {
               const patientPts = chartData
                 .filter(d => d.height != null || d.weight != null || d.headCirc != null)
                 .map(d => ({ week: d.week, height: d.height, weight: d.weight, headCirc: d.headCirc, label: d.weekLabel }));
+
+              const fentonPts = patientPts.filter(p => p.week <= splitWeekClamped);
+              const whoPts    = patientPts.filter(p => p.week >  splitWeekClamped);
+
               return (
                 <div>
                   <div style={{ marginBottom: 16 }}>
                     <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: "#0f172a" }}>
                       Fenton Preterm Growth Chart – {gender === "male" ? "Boys" : "Girls"}
                     </h3>
-                  
                   </div>
-                  <FentonChart gender={gender} patientData={patientPts} />
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+                      Fenton (≤ {splitWeekClamped}w)
+                    </h4>
+                    <FentonChart gender={gender} patientData={fentonPts} />
+
+                    <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+                      WHO after {splitWeekClamped}w
+                    </h4>
+
+                    {/*
+                      FIX 3: Render all three metrics in the WHO section instead of
+                      hardcoding metric="height". Each chart only appears if there is
+                      at least one data-point for that metric.
+                    */}
+                    {whoPts.some(p => p.height != null) && (
+                      <>
+                        <h5 style={{ margin: "4px 0 0", fontSize: 12, fontWeight: 600, color: "#475569" }}>
+                          Length / Height (cm)
+                        </h5>
+                        <WHOChartMini gender={gender} metric="height" patientData={whoPts} />
+                      </>
+                    )}
+
+                    {whoPts.some(p => p.weight != null) && (
+                      <>
+                        <h5 style={{ margin: "4px 0 0", fontSize: 12, fontWeight: 600, color: "#475569" }}>
+                          Weight (kg)
+                        </h5>
+                        <WHOChartMini gender={gender} metric="weight" patientData={whoPts} />
+                      </>
+                    )}
+
+                    {whoPts.some(p => p.headCirc != null) && (
+                      <>
+                        <h5 style={{ margin: "4px 0 0", fontSize: 12, fontWeight: 600, color: "#475569" }}>
+                          Head Circumference (cm)
+                        </h5>
+                        <WHOChartMini gender={gender} metric="headCirc" patientData={whoPts} />
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })()}
@@ -552,38 +614,39 @@ function Placeholder() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight: "calc(100vh - 52px)", backgroundColor: "#f8fafc", padding: "24px", fontFamily: "system-ui, sans-serif", boxSizing: "border-box", width: "100%" },
-  wrapper: { maxWidth: "100%", margin: "0 auto" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" },
-  patientBadge: { backgroundColor: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "8px 16px" },
-  patientName: { fontWeight: 700, fontSize: "14px", color: "#0f172a" },
-  patientDob: { fontSize: "12px", color: "#475569", marginLeft: 8 },
-  body: { display: "flex", gap: "20px", alignItems: "flex-start", width: "100%" },
-  formCard: { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "20px", width: "300px", flexShrink: 0, display: "flex", flexDirection: "column", gap: "12px" },
-  chartCard: { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "24px", flex: 1, minWidth: 0 },
-  sectionTitle: { margin: 0, fontSize: "14px", fontWeight: 700, color: "#0f172a" },
-  field: { display: "flex", flexDirection: "column", gap: "4px" },
-  row: { display: "flex", gap: "8px" },
-  label: { fontSize: "11px", fontWeight: 600, color: "#475569" },
-  input: { padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", color: "#0f172a", width: "100%", boxSizing: "border-box" },
-  cgaDisplay: { padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0", fontSize: "13px", color: "#0f172a", backgroundColor: "#f8fafc", fontWeight: 600 },
-  errorText: { fontSize: "11px", color: "#ef4444", fontWeight: 500 },
-  divider: { borderTop: "1px solid #e2e8f0", margin: "4px 0" },
-  genderRow: { display: "flex", gap: "8px" },
-  genderBtn: { flex: 1, padding: "8px 0", borderRadius: "6px", border: "1px solid #cbd5e1", backgroundColor: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
-  gMale: { backgroundColor: "#eff6ff", borderColor: "#2563eb", color: "#2563eb" },
-  gFemale: { backgroundColor: "#fdf2f8", borderColor: "#db2777", color: "#db2777" },
-  visitsHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  addBtn: { padding: "4px 12px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer" },
-  visitList: { display: "flex", flexDirection: "column", gap: "10px", maxHeight: "340px", overflowY: "auto" },
-  visitCard: { border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px", backgroundColor: "#f8fafc" },
+  page:          { minHeight: "calc(100vh - 52px)", backgroundColor: "#f8fafc", padding: "24px", fontFamily: "system-ui, sans-serif", boxSizing: "border-box", width: "100%" },
+  wrapper:       { maxWidth: "100%", margin: "0 auto" },
+  header:        { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" },
+  patientBadge:  { backgroundColor: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "8px 16px" },
+  patientName:   { fontWeight: 700, fontSize: "14px", color: "#0f172a" },
+  patientDob:    { fontSize: "12px", color: "#475569", marginLeft: 8 },
+  body:          { display: "flex", gap: "20px", alignItems: "flex-start", width: "100%" },
+  formCard:      { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "20px", width: "300px", flexShrink: 0, display: "flex", flexDirection: "column", gap: "12px" },
+
+  chartCard:     { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "24px", flex: 1, minWidth: 0 },
+  sectionTitle:  { margin: 0, fontSize: "14px", fontWeight: 700, color: "#0f172a" },
+  field:         { display: "flex", flexDirection: "column", gap: "4px" },
+  row:           { display: "flex", gap: "8px" },
+  label:         { fontSize: "11px", fontWeight: 600, color: "#475569" },
+  input:         { padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px", color: "#0f172a", width: "100%", boxSizing: "border-box" },
+  cgaDisplay:    { padding: "8px 12px", borderRadius: "6px", border: "1px solid #e2e8f0", fontSize: "13px", color: "#0f172a", backgroundColor: "#f8fafc", fontWeight: 600 },
+  errorText:     { fontSize: "11px", color: "#ef4444", fontWeight: 500 },
+  divider:       { borderTop: "1px solid #e2e8f0", margin: "4px 0" },
+  genderRow:     { display: "flex", gap: "8px" },
+  genderBtn:     { flex: 1, padding: "8px 0", borderRadius: "6px", border: "1px solid #cbd5e1", backgroundColor: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 500 },
+  gMale:         { backgroundColor: "#eff6ff", borderColor: "#2563eb", color: "#2563eb" },
+  gFemale:       { backgroundColor: "#fdf2f8", borderColor: "#db2777", color: "#db2777" },
+  visitsHeader:  { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  addBtn:        { padding: "4px 12px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer" },
+  visitList:     { display: "flex", flexDirection: "column", gap: "10px", maxHeight: "340px", overflowY: "auto" },
+  visitCard:     { border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px", backgroundColor: "#f8fafc" },
   visitCardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" },
-  visitLabel: { fontSize: "12px", fontWeight: 700, color: "#0f172a" },
-  removeBtn: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "12px" },
-  btnRow: { display: "flex", gap: "8px", marginTop: "12px" },
-  btnPrimary: { flex: 1, padding: "10px", backgroundColor: "#2563eb", color: "#fff", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, cursor: "pointer" },
-  btnSecondary: { flex: 1, padding: "10px", backgroundColor: "#fff", color: "#475569", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer" },
-  placeholder: { display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px" },
+  visitLabel:    { fontSize: "12px", fontWeight: 700, color: "#0f172a" },
+  removeBtn:     { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "12px" },
+  btnRow:        { display: "flex", gap: "8px", marginTop: "12px" },
+  btnPrimary:    { flex: 1, padding: "10px", backgroundColor: "#2563eb", color: "#fff", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, cursor: "pointer" },
+  btnSecondary:  { flex: 1, padding: "10px", backgroundColor: "#fff", color: "#475569", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "13px", fontWeight: 500, cursor: "pointer" },
+  placeholder:   { display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px" },
   placeholderText: { color: "#64748b", fontSize: "14px" },
-  detailBtn: { padding: "8px 16px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600 },
+  detailBtn:     { padding: "8px 16px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600 },
 };
