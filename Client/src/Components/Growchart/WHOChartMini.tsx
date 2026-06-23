@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import * as React from "react";
+import { useMemo, useState } from "react";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -29,6 +30,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip,
 type Metric = "height" | "weight" | "headCirc";
 type GenderView = "both" | "male" | "female";
 type Gender = "male" | "female" | "";
+type MetricFilter = "all" | Metric;
 
 interface PatientPoint {
   week: number;
@@ -41,7 +43,6 @@ interface PatientPoint {
 interface WHOChartMiniProps {
   gender: Gender;
   patientData: PatientPoint[];
-  metric: Metric;
   height?: number;
 }
 
@@ -78,8 +79,6 @@ function formatWeekLabel(week: number) {
   return years > 0 ? `${years}y ${months}m` : `${months}m`;
 }
 
-// FIX (#3/#4): rounds a value up to the next multiple of `step`, used to
-// compute a clean dynamic y-axis ceiling instead of leaving max undefined.
 function ceilTo(v: number, step: number) {
   return Math.ceil(v / step) * step;
 }
@@ -90,18 +89,12 @@ const PERCENTILE_KEYS = ["p3", "p15", "p50", "p85", "p97"] as const;
 const PATIENT_COLOR = "#111827";
 
 function getRefData(metric: Metric, isMale: boolean): RefPoint[] {
-  if (metric === "height")   return isMale ? WHO_LENGTH_BOYS  : WHO_LENGTH_GIRLS;
-  if (metric === "weight")   return isMale ? WHO_WEIGHT_BOYS  : WHO_WEIGHT_GIRLS;
+  if (metric === "height") return isMale ? WHO_LENGTH_BOYS  : WHO_LENGTH_GIRLS;
+  if (metric === "weight") return isMale ? WHO_WEIGHT_BOYS  : WHO_WEIGHT_GIRLS;
   return isMale ? WHO_HC_BOYS : WHO_HC_GIRLS;
 }
 
-// FIX: capped at WHO_MAX_WEEK so this never asks interpolate() for a week
-// past the WHO dataset's real ceiling (5 years post-term). The previous
-// version pushed a final cluster at "base + 52" for y = 5, which equals
-// 40 + 6*52 = 352 — a full year beyond the data's actual end at week 300.
-// Those overshooting points landed in interpolate()'s extrapolation branch,
-// producing a visible upward "hook" right at the chart's edge.
-const WHO_MAX_WEEK = 40 + 5 * 52; // 300 — 5 years post-term, the data's real ceiling
+const WHO_MAX_WEEK = 40 + 5 * 52;
 
 function buildRefWeeks(): number[] {
   const weeks: number[] = [];
@@ -122,18 +115,14 @@ function buildDatasets(
   genderView: GenderView
 ): ChartDataset<"line">[] {
   const refWeeks = buildRefWeeks();
-  const showBoys   = genderView === "both" || genderView === "male";
-  const showGirls  = genderView === "both" || genderView === "female";
-
+  const showBoys  = genderView === "both" || genderView === "male";
+  const showGirls = genderView === "both" || genderView === "female";
   const datasets: ChartDataset<"line">[] = [];
 
-  // ── Reference percentile series ──────────────────────────────────────────
   (["male", "female"] as const).forEach((sex) => {
     if (sex === "male"   && !showBoys)  return;
     if (sex === "female" && !showGirls) return;
-
     const ref = getRefData(metric, sex === "male");
-
     PERCENTILE_KEYS.forEach((pKey, idx) => {
       datasets.push({
         label: `${sex === "male" ? "Boys" : "Girls"} ${PCTS[idx]}`,
@@ -152,10 +141,6 @@ function buildDatasets(
     });
   });
 
-  // ── Patient series — each visit is its own data point ────────────────────
-  // Patient points are inserted directly at their exact CGA week value
-  // instead of being slot-matched against a ±0.5w reference grid (which would
-  // silently drop any point whose CGA didn't fall within 0.5w of a ref week).
   const patientPts = patientData
     .filter((p) => {
       if (metric === "height")   return p.height   != null;
@@ -185,9 +170,6 @@ function buildDatasets(
   return datasets;
 }
 
-// FIX (#5): percentile end-of-line labels are now split into separate boys/girls
-// groups and vertically de-collided within each group (mirrors GrowchartDetail's
-// percentileLabelsPlugin), so close-together percentile labels no longer overlap.
 const percentileLabelsPlugin = {
   id: "percentileLabelsMini",
   afterDraw(chart: any) {
@@ -195,8 +177,7 @@ const percentileLabelsPlugin = {
     if (!ctx || !chartArea) return;
     const xRight = chartArea.right;
     const xMax: number = scales.x.max;
-
-    const boysItems: { label: string; color: string; x: number; y: number }[] = [];
+    const boysItems:  { label: string; color: string; x: number; y: number }[] = [];
     const girlsItems: { label: string; color: string; x: number; y: number }[] = [];
 
     chart.data.datasets.forEach((dataset: any) => {
@@ -243,19 +224,23 @@ const percentileLabelsPlugin = {
   },
 };
 
-export default function WHOChartMini({ gender, patientData, metric, height = 420 }: WHOChartMiniProps) {
-  const genderView: GenderView = gender === "female" ? "female" : gender === "male" ? "male" : "both";
+function SingleMetricChart({
+  genderView,
+  axisColor,
+  patientData,
+  metric,
+  height,
+}: {
+  genderView: GenderView;
+  axisColor: string;
+  patientData: PatientPoint[];
+  metric: Metric;
+  height: number;
+}) {
+  const unitLabel     = metric === "weight" ? "kg" : "cm";
+  const yStep         = metric === "weight" ? 1 : 5;
+  const yMinResolved  = metric === "weight" ? 2 : metric === "height" ? 35 : 25;
 
-  const unitLabel = metric === "weight" ? "kg" : "cm";
-  const yStep     = metric === "weight" ? 1 : 5;
-
-  // FIX (#4): y-axis minimum now depends on the metric, matching the WHO-mode
-  // values used in GrowchartDetail's MetricChart (chartType === "who" branch),
-  // instead of a single flat yMin regardless of metric.
-  const yMinResolved = metric === "weight" ? 2 : metric === "height" ? 35 : 25;
-
-  // xMax is derived from patient data so the axis always extends far enough
-  // to show every visit, mirroring the same fix applied to FentonChart.
   const xMax = useMemo(() => {
     const weeks = patientData.map((p) => p.week).filter(Number.isFinite);
     return weeks.length ? Math.max(40 + 260, Math.ceil(Math.max(...weeks)) + 4) : 40 + 260;
@@ -268,9 +253,6 @@ export default function WHOChartMini({ gender, patientData, metric, height = 420
 
   const chartData: ChartData<"line"> = useMemo(() => ({ datasets }), [datasets]);
 
-  // FIX (#3): dynamic y-axis ceiling computed from the actual data (percentile
-  // lines + patient points), rounded up to the next yStep, instead of leaving
-  // max undefined and letting Chart.js auto-scale it.
   const maxY = useMemo(() => {
     const vals: number[] = [];
     datasets.forEach((ds) => {
@@ -282,113 +264,244 @@ export default function WHOChartMini({ gender, patientData, metric, height = 420
     return Math.max(yMinResolved + yStep * 4, ceilTo(maxVal, yStep));
   }, [datasets, yMinResolved, yStep]);
 
-  const options: ChartOptions<"line"> = useMemo(() => {
-    const axisColor = gender === "female" ? "#db2777" : "#2563eb";
-    return {
-      responsive: true,
-      maintainAspectRatio: false,
-      parsing: false,
-      layout: { padding: { left: 20, right: 40 } },
-      scales: {
-        x: {
-          type: "linear",
-          min: 40,
-          max: xMax,
-          title: {
-            display: true,
-            text: "Age Milestones",
-            color: "#475569",
-            font: { size: 12, weight: "bold" as const },
-            padding: 10,
+  const options: ChartOptions<"line"> = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    parsing: false,
+    layout: { padding: { left: 20, right: 40 } },
+    scales: {
+      x: {
+        type: "linear",
+        min: 40,
+        max: xMax,
+        title: {
+          display: true,
+          text: "Age Milestones",
+          color: "#475569",
+          font: { size: 12, weight: "bold" as const },
+          padding: 10,
+        },
+        afterBuildTicks: (axis: { ticks: { value: number }[] }) => {
+          const customTicks: { value: number }[] = [];
+          customTicks.push({ value: 40 });
+          for (let y = 0; y < 5; y++) {
+            if (y > 0) customTicks.push({ value: 40 + y * 52 });
+            [2, 4, 6, 8, 10].forEach((m) => {
+              customTicks.push({ value: 40 + y * 52 + m * (52 / 12) });
+            });
+          }
+          customTicks.push({ value: 40 + 5 * 52 });
+          axis.ticks = customTicks;
+        },
+        grid: { color: "#e2e8f0" },
+        ticks: {
+          color: axisColor,
+          autoSkip: false,
+          maxRotation: 0,
+          font: (context: any) => {
+            const v = Number(context.tick?.value || 0);
+            const isYearOrTerm = Math.abs(v - 40) < 0.5 || Math.abs((v - 40) % 52) < 0.5;
+            return {
+              size: isYearOrTerm ? 12 : 9.5,
+              weight: isYearOrTerm ? ("bold" as const) : ("normal" as const),
+            };
           },
-          // FIX (#1): custom tick positions anchored at week 40 ("Term"), then
-          // each year (40 + 52*y) plus months 2/4/6/8/10 within each year —
-          // instead of Chart.js's automatic linear tick spacing.
-          afterBuildTicks: (axis: { ticks: { value: number }[] }) => {
-            const customTicks: { value: number }[] = [];
-            customTicks.push({ value: 40 });
-
-            for (let y = 0; y < 5; y++) {
-              if (y > 0) {
-                customTicks.push({ value: 40 + y * 52 });
-              }
-              [2, 4, 6, 8, 10].forEach((m) => {
-                customTicks.push({ value: 40 + y * 52 + m * (52 / 12) });
-              });
+          callback: (value: number | string) => {
+            const v = Number(value);
+            const eps = 0.5;
+            if (Math.abs(v - 40) < eps) return "Term";
+            if (v > 40) {
+              const weeksPast = v - 40;
+              const years = Math.round(weeksPast / 52);
+              const months = Math.round((weeksPast % 52) / (52 / 12));
+              if (Math.abs(weeksPast - years * 52) < eps) return [`${years}`, "yr"];
+              else if ([2, 4, 6, 8, 10].includes(months)) return `${months}`;
             }
-            customTicks.push({ value: 40 + 5 * 52 });
-
-            axis.ticks = customTicks;
-          },
-          grid: { color: "#e2e8f0" },
-          ticks: {
-            color: axisColor,
-            autoSkip: false,
-            maxRotation: 0,
-            // FIX (#2): bold/larger font for the Term tick and year ticks,
-            // lighter/smaller font for in-between month ticks.
-            font: (context: any) => {
-              const v = Number(context.tick?.value || 0);
-              const isYearOrTerm = Math.abs(v - 40) < 0.5 || Math.abs((v - 40) % 52) < 0.5;
-              return {
-                size: isYearOrTerm ? 12 : 9.5,
-                weight: isYearOrTerm ? ("bold" as const) : ("normal" as const),
-              };
-            },
-            // FIX (#2): "Term" label at week 40, "N yr" at year ticks, plain
-            // month number at the in-between month ticks, blank otherwise.
-            callback: (value: number | string) => {
-              const v = Number(value);
-              const eps = 0.5;
-
-              if (Math.abs(v - 40) < eps) return "Term";
-
-              if (v > 40) {
-                const weeksPast = v - 40;
-                const years = Math.round(weeksPast / 52);
-                const months = Math.round((weeksPast % 52) / (52 / 12));
-
-                if (Math.abs(weeksPast - years * 52) < eps) {
-                  return [`${years}`, "yr"];
-                } else if ([2, 4, 6, 8, 10].includes(months)) {
-                  return `${months}`;
-                }
-              }
-              return "";
-            },
-          },
-        },
-        y: {
-          min: yMinResolved,
-          max: maxY,
-          title: { display: true, text: unitLabel, color: "#475569", font: { size: 12, weight: "bold" as const } },
-          ticks: { stepSize: yStep, color: axisColor, font: { size: 11 } },
-          grid: { color: "#e8ebef" },
-        },
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            title: (items) => {
-              const raw = items[0]?.raw as { label?: string } | undefined;
-              return raw?.label ?? "";
-            },
-            label: (ctx) => {
-              const value = ctx.parsed.y;
-              return typeof value === "number"
-                ? `${ctx.dataset.label}: ${value.toFixed(1)} ${unitLabel}`
-                : `${ctx.dataset.label}: —`;
-            },
+            return "";
           },
         },
       },
-    };
-  }, [gender, xMax, yMinResolved, maxY, yStep, unitLabel]);
+      y: {
+        min: yMinResolved,
+        max: maxY,
+        title: { display: true, text: unitLabel, color: "#475569", font: { size: 12, weight: "bold" as const } },
+        ticks: { stepSize: yStep, color: axisColor, font: { size: 11 } },
+        grid: { color: "#e8ebef" },
+      },
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          title: (items) => {
+            const raw = items[0]?.raw as { label?: string } | undefined;
+            return raw?.label ?? "";
+          },
+          label: (ctx) => {
+            const value = ctx.parsed.y;
+            return typeof value === "number"
+              ? `${ctx.dataset.label}: ${value.toFixed(1)} ${unitLabel}`
+              : `${ctx.dataset.label}: —`;
+          },
+        },
+      },
+    },
+  }), [axisColor, xMax, yMinResolved, maxY, yStep, unitLabel]);
 
   return (
     <div style={{ width: "100%", height, position: "relative" }}>
       <Line data={chartData} options={options} plugins={[percentileLabelsPlugin]} />
+    </div>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const styles = {
+  filterBar: {
+    display: "flex",
+    gap: "6px",
+    flexWrap: "nowrap" as const,
+    overflowX: "auto" as const,
+    overflowY: "hidden" as const,
+    marginBottom: 14,
+    alignItems: "center",
+    width: "100%",
+    padding: "2px 0",
+  },
+  divider: {
+    width: 1,
+    height: 20,
+    backgroundColor: "#e2e8f0",
+    flexShrink: 0,
+    margin: "0 2px",
+  },
+  btn: {
+    padding: "6px 14px",
+    borderRadius: "999px",
+    border: "1px solid #cbd5e1",
+    backgroundColor: "#fff",
+    color: "#475569",
+    fontSize: "12px",
+    fontWeight: 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+    flexShrink: 0,
+  },
+  activeMale:     { backgroundColor: "#eff6ff", borderColor: "#2563eb", color: "#2563eb" },
+  activeFemale:   { backgroundColor: "#fdf2f8", borderColor: "#db2777", color: "#db2777" },
+  activeBoth:     { backgroundColor: "#f1f5f9", borderColor: "#0f172a", color: "#0f172a" },
+  activeMetric:   { backgroundColor: "#0f172a", borderColor: "#0f172a", color: "#fff" },
+  row:            { display: "flex", gap: 16, width: "100%" },
+  rowCenter:      { display: "flex", justifyContent: "center", width: "100%" },
+};
+
+const GENDER_OPTIONS: { key: GenderView; label: string }[] = [
+  { key: "male",   label: "♂ Boys"  },
+  { key: "female", label: "♀ Girls" },
+  { key: "both",   label: "Both"    },
+];
+
+const METRIC_OPTIONS = [
+  { key: "all"      as MetricFilter, label: "All"        },
+  { key: "height"   as MetricFilter, label: "Length"     },
+  { key: "weight"   as MetricFilter, label: "Weight"     },
+  { key: "headCirc" as MetricFilter, label: "Head Circ." },
+] as const;
+
+export default function WHOChartMini({ gender, patientData, height = 420 }: WHOChartMiniProps) {
+  const [metricFilter, setMetricFilter] = useState<MetricFilter>("all");
+  const [viewGender, setViewGender] = useState<GenderView>(
+    gender === "female" ? "female" : gender === "male" ? "male" : "both"
+  );
+
+  const axisColor = viewGender === "female" ? "#db2777" : "#2563eb";
+
+  const hasData = (metric: Metric) =>
+    patientData.some((p) =>
+      metric === "height" ? p.height != null : metric === "weight" ? p.weight != null : p.headCirc != null
+    );
+
+  const showHeight   = (metricFilter === "all" || metricFilter === "height")   && hasData("height");
+  const showWeight   = (metricFilter === "all" || metricFilter === "weight")   && hasData("weight");
+  const showHeadCirc = (metricFilter === "all" || metricFilter === "headCirc") && hasData("headCirc");
+
+  const renderChart = (metric: Metric, widthCap?: string) => (
+    <div key={metric} style={{ flex: 1, minWidth: 0, maxWidth: widthCap }}>
+      <SingleMetricChart
+        genderView={viewGender}
+        axisColor={axisColor}
+        patientData={patientData}
+        metric={metric}
+        height={height}
+      />
+    </div>
+  );
+
+  const heightChart   = showHeight   ? renderChart("height")   : null;
+  const weightChart   = showWeight   ? renderChart("weight")   : null;
+  const headCircChart = showHeadCirc
+    ? renderChart("headCirc", metricFilter === "all" ? "50%" : undefined)
+    : null;
+
+  // Active style for gender buttons
+  const genderActiveStyle = (key: GenderView) => {
+    if (viewGender !== key) return {};
+    if (key === "male")   return styles.activeMale;
+    if (key === "female") return styles.activeFemale;
+    return styles.activeBoth;
+  };
+
+  return (
+    <div>
+      {/* ── Single unified filter bar ── */}
+      <div style={styles.filterBar}>
+        {/* Gender toggles */}
+        {GENDER_OPTIONS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setViewGender(key)}
+            style={{ ...styles.btn, ...genderActiveStyle(key) }}
+          >
+            {label}
+          </button>
+        ))}
+
+        {/* Thin divider between gender and metric groups */}
+        <div style={styles.divider} aria-hidden="true" />
+
+        {/* Metric toggles */}
+        {METRIC_OPTIONS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setMetricFilter(key)}
+            style={{
+              ...styles.btn,
+              ...(metricFilter === key ? styles.activeMetric : {}),
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Charts ── */}
+      {metricFilter === "all" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {(heightChart || weightChart) && (
+            <div style={styles.row}>
+              {heightChart}
+              {weightChart}
+            </div>
+          )}
+          {headCircChart && <div style={styles.rowCenter}>{headCircChart}</div>}
+        </div>
+      ) : (
+        <div style={{ width: "100%" }}>
+          {heightChart || weightChart || headCircChart}
+        </div>
+      )}
     </div>
   );
 }

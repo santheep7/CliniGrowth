@@ -40,6 +40,7 @@ interface PatientPoint {
 interface FentonChartProps {
   gender: Gender;
   patientData: PatientPoint[];
+  splitWeek: number;
   // Sidebar panel content — rendered in the collapsible form sidebar
   sidebarContent?: React.ReactNode;
   // Called when user clicks the collapsed rail to re-open sidebar

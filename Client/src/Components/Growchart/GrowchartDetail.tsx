@@ -95,6 +95,7 @@ function getStorageItem<T>(key: string, fallback: T): T {
 }
 
 function ceilTo(v: number, step: number) { return Math.ceil(v / step) * step; }
+
 // ─── Chart Data Builder ──────────────────────────────────────────────────────
 function buildData(visits: Visit[], dob: string, gaAtBirth: number, metric: Metric, chartType: ChartType): ChartPoint[] {
   let bRef = metric === "height" ? FENTON_LENGTH_BOYS  : metric === "weight" ? FENTON_WEIGHT_BOYS  : FENTON_HC_BOYS;
@@ -264,6 +265,7 @@ const percentileLabelsPlugin = {
     ctx.restore();
   },
 };
+
 // ─── MetricChart Sub-Component ───────────────────────────────────────────────
 function MetricChart({ data, yLabel, yStep, yMin, genderView, gaAtBirth, chartType, height = 420 }: {
   data: ChartPoint[];
@@ -273,10 +275,9 @@ function MetricChart({ data, yLabel, yStep, yMin, genderView, gaAtBirth, chartTy
   genderView: GenderView;
   gaAtBirth: number;
   chartType: ChartType;
-  height?: number; // Added optional height prop
+  height?: number;
 }) {
-  // Inside the MetricChart component, right before "const options = {"
-  const axisColor = genderView === "female" ? "#db2777" : "#2563eb"; // Pink for girls, Blue for boys
+  const axisColor = genderView === "female" ? "#db2777" : "#2563eb";
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -321,19 +322,13 @@ function MetricChart({ data, yLabel, yStep, yMin, genderView, gaAtBirth, chartTy
         afterBuildTicks: (axis: { ticks: { value: number }[] }) => {
           const customTicks: { value: number }[] = [];
           customTicks.push({ value: gaAtBirth });
-          
           for (let y = 0; y < 5; y++) {
-            if (y > 0) {
-              customTicks.push({ value: gaAtBirth + y * 52 });
-            }
-            
-            // Add ticks for months 2, 4, 6, 8, 10
+            if (y > 0) customTicks.push({ value: gaAtBirth + y * 52 });
             [2, 4, 6, 8, 10].forEach(m => {
               customTicks.push({ value: gaAtBirth + y * 52 + m * (52 / 12) });
             });
           }
           customTicks.push({ value: gaAtBirth + 5 * 52 });
-          
           axis.ticks = customTicks;
         },
         ticks: {
@@ -343,31 +338,21 @@ function MetricChart({ data, yLabel, yStep, yMin, genderView, gaAtBirth, chartTy
           font: (context) => {
             const v = Number(context.tick?.value || 0);
             const isYearOrBirth = Math.abs(v - gaAtBirth) < 0.5 || Math.abs((v - gaAtBirth) % 52) < 0.5;
-            
-            /* 🌟 Update this return statement right here 🌟 */
-            return { 
-              size: isYearOrBirth ? 12 : 9.5, // 12 for Birth/Years, 9.5 for Months
-              weight: isYearOrBirth ? ("bold" as const) : ("normal" as const) 
+            return {
+              size: isYearOrBirth ? 12 : 9.5,
+              weight: isYearOrBirth ? ("bold" as const) : ("normal" as const)
             };
           },
           callback: (value: number | string) => {
             const v = Number(value);
             const eps = 0.5;
-            
             if (Math.abs(v - gaAtBirth) < eps) return "Birth";
-            
             if (v > gaAtBirth) {
               const weeksPast = v - gaAtBirth;
               const years = Math.round(weeksPast / 52);
               const months = Math.round((weeksPast % 52) / (52 / 12));
-              
-              if (Math.abs(weeksPast - years * 52) < eps) {
-                return [`${years}`, "yr"];
-              } 
-              // Label the even months
-              else if ([2, 4, 6, 8, 10].includes(months)) {
-                return `${months}`;
-              }
+              if (Math.abs(weeksPast - years * 52) < eps) return [`${years}`, "yr"];
+              else if ([2, 4, 6, 8, 10].includes(months)) return `${months}`;
             }
             return "";
           },
@@ -375,9 +360,9 @@ function MetricChart({ data, yLabel, yStep, yMin, genderView, gaAtBirth, chartTy
         grid: { color: "#e2e8f0" },
       },
       y: {
-        min: chartType === "who" 
-          ? (yLabel === "kg" ? 2 : yLabel === "cm" && yStep === 5 ? 35 : 25) 
-          : yMin, 
+        min: chartType === "who"
+          ? (yLabel === "kg" ? 2 : yLabel === "cm" && yStep === 5 ? 35 : 25)
+          : yMin,
         max: maxY,
         title: { display: true, text: yLabel, color: "#475569", font: { size: 12, weight: "bold" as const } },
         ticks: { stepSize: yStep, color: axisColor, font: { size: 11 } },
@@ -417,19 +402,20 @@ const METRICS: { key: Metric; label: string; icon: string; yLabel: string; yStep
   { key: "headCirc", label: "Head Circumference", icon: "🔵", yLabel: "cm", yStep: 5, yMin: 10 },
   { key: "all",      label: "View All",           icon: "📊", yLabel: "",   yStep: 0, yMin: 0  },
 ];
+
 export default function GrowchartDetail() {
   const navigate = useNavigate();
 
-  const [chartType, setChartType] = useState<ChartType>(() => 
+  const [formCollapsed, setFormCollapsed] = useState(false);
+
+  const [chartType, setChartType] = useState<ChartType>(() =>
     (localStorage.getItem("gc_chartType") as ChartType) || "fenton"
   );
 
   useEffect(() => {
     const checkStorageChange = () => {
       const storedType = localStorage.getItem("gc_chartType") as ChartType;
-      if (storedType && storedType !== chartType) {
-        setChartType(storedType);
-      }
+      if (storedType && storedType !== chartType) setChartType(storedType);
     };
     const interval = setInterval(checkStorageChange, 300);
     window.addEventListener("storage", checkStorageChange);
@@ -496,9 +482,9 @@ export default function GrowchartDetail() {
   }, [activeMetric, genderView, chartType]);
 
   useEffect(() => {
-    if (gender === "male")   setGenderView("male");
+    if (gender === "male")        setGenderView("male");
     else if (gender === "female") setGenderView("female");
-    else if (!localStorage.getItem("gc_genderView")) setGenderView("male"); 
+    else if (!localStorage.getItem("gc_genderView")) setGenderView("male");
   }, [gender]);
 
   function animateTab(el: HTMLButtonElement) {
@@ -539,9 +525,9 @@ export default function GrowchartDetail() {
     localStorage.removeItem("gc_activeMetric");
     localStorage.removeItem("gc_genderView");
 
-    setPatientName(""); 
-    setDob(""); 
-    setGender(""); 
+    setPatientName("");
+    setDob("");
+    setGender("");
     setGaAtBirth("40");
     setVisits([{ id: crypto.randomUUID(), date: "", height: "", weight: "", headCirc: "" }]);
     setActiveMetric("height");
@@ -551,6 +537,7 @@ export default function GrowchartDetail() {
   const ga = parseFloat(gaAtBirth) || 40;
   const chartData = useMemo(() => buildData(visits, dob, ga, activeMetric, chartType), [visits, dob, ga, activeMetric, chartType]);
   const m = METRICS.find(x => x.key === activeMetric) || METRICS[0];
+
   return (
     <div ref={pageRef} style={s.page}>
       <style>{`
@@ -558,7 +545,7 @@ export default function GrowchartDetail() {
           display: grid;
           gap: 24px;
           align-items: start;
-          grid-template-columns: ${activeMetric === "all" ? "1fr" : "380px 1fr"};
+          grid-template-columns: ${activeMetric === "all" || formCollapsed ? "auto 1fr" : "380px 1fr"};
         }
         @media (max-width: 1024px) {
           .layout-responsive-grid {
@@ -585,93 +572,132 @@ export default function GrowchartDetail() {
         </div>
 
         <div className="layout-responsive-grid">
-          
-          {/* ─── Left Column: Details & Forms ─── */}
-          <div ref={formCardRef} style={s.formCard}>
-            <div style={s.formHeaderRow}>
-              <h2 style={s.formTitle}>Patient Details</h2>
-              <button style={s.resetBtn} onClick={handleReset}>↺ Reset</button>
-            </div>
-            <div style={s.field}>
-              <label style={s.label}>Patient Full Name</label>
-              <input style={s.input} type="text" placeholder="e.g. Baby Doe"
-                value={patientName} onChange={e => setPatientName(e.target.value)} />
-            </div>
-            <div style={s.row}>
-              <div style={{ ...s.field, flex: 1 }}>
-                <label style={s.label}>Date of Birth</label>
-                <input style={s.input} type="date" value={dob}
-                  max={new Date().toISOString().split("T")[0]}
-                  onChange={e => setDob(e.target.value)} />
+
+          {/* ─── Left Column: Collapsible Patient Details & Forms ─── */}
+          <div
+            ref={formCardRef}
+            style={{
+              ...s.formCard,
+              width: formCollapsed ? 48 : 380,
+              minWidth: formCollapsed ? 48 : 380,
+              padding: formCollapsed ? "16px 10px" : "24px",
+              overflow: "hidden",
+              transition: "width 0.3s ease, min-width 0.3s ease, padding 0.3s ease",
+              alignItems: formCollapsed ? "center" : undefined,
+            }}
+          >
+            {/* Toggle button row — always visible */}
+            <div style={{
+              display: "flex",
+              justifyContent: formCollapsed ? "center" : "space-between",
+              alignItems: "center",
+              borderBottom: formCollapsed ? "none" : "1px solid #f1f5f9",
+              paddingBottom: formCollapsed ? 0 : "12px",
+              marginBottom: formCollapsed ? 0 : "4px",
+              width: "100%",
+            }}>
+              {!formCollapsed && <h2 style={s.formTitle}>Patient Details</h2>}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {!formCollapsed && (
+                  <button style={s.resetBtn} onClick={handleReset}>↺ Reset</button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setFormCollapsed(c => !c)}
+                  title={formCollapsed ? "Expand panel" : "Collapse panel"}
+                  style={s.collapseBtn}
+                >
+                  {formCollapsed ? "▶" : "◀"}
+                </button>
               </div>
-              <div style={{ ...s.field, flex: 1 }}>
-                <label style={s.label}>Biological Sex</label>
-                <select style={s.select} value={gender} onChange={e => setGender(e.target.value as Gender)}>
-                  <option value="">Select</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
-              </div>
             </div>
-            <div style={s.field}>
-              <label style={s.label}>Gestational Age at Birth (weeks)</label>
-              <input style={s.input} type="number" min="22" max="50"
-                value={gaAtBirth} onChange={e => setGaAtBirth(e.target.value)} />
-            </div>
-            <div style={s.visitsDivider}>
-              <h3 style={s.visitsTitle}>Visits Logging Form</h3>
-              <button style={s.addBtn} onClick={handleAddVisit}>+ Add Log Entry</button>
-            </div>
-            <div style={s.visitList}>
-              {visits.map((visit, index) => {
-                const cga = visit.date && dob && gaAtBirth
-                  ? cgaWeek(dob, ga, visit.date) : null;
-                return (
-                  <div key={visit.id} data-visit-card style={s.visitCard}>
-                    <div style={s.visitCardHeader}>
-                      <span style={s.visitLabel}>Record #{index + 1}</span>
-                      {visits.length > 1 && (
-                        <button style={s.deleteBtn} onClick={() => handleRemoveVisit(visit.id)}>Delete</button>
-                      )}
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Date of Examination</label>
-                      <input style={s.input} type="date" value={visit.date}
-                        min={dob || undefined}
-                        max={new Date().toISOString().split("T")[0]}
-                        onChange={e => handleUpdateVisit(visit.id, "date", e.target.value)} />
-                    </div>
-                    {cga !== null && (
-                      <div style={s.field}>
-                        <label style={s.label}>Corrected GA (auto)</label>
-                        <div style={s.cgaDisplay}>{cga.toFixed(1)}w</div>
-                      </div>
-                    )}
-                    <div style={s.row}>
-                      <div style={{ ...s.field, flex: 1 }}>
-                        <label style={s.label}>Weight (kg)</label>
-                        <input style={s.input} type="number" step="0.001" placeholder="0.00"
-                          value={visit.weight} onChange={e => handleUpdateVisit(visit.id, "weight", e.target.value)} />
-                      </div>
-                      <div style={{ ...s.field, flex: 1 }}>
-                        <label style={s.label}>Length (cm)</label>
-                        <input style={s.input} type="number" step="0.1" placeholder="0.0"
-                          value={visit.height} onChange={e => handleUpdateVisit(visit.id, "height", e.target.value)} />
-                      </div>
-                    </div>
-                    <div style={s.field}>
-                      <label style={s.label}>Head Circumference (cm)</label>
-                      <input style={s.input} type="number" step="0.1" placeholder="0.0"
-                        value={visit.headCirc} onChange={e => handleUpdateVisit(visit.id, "headCirc", e.target.value)} />
-                    </div>
+
+            {/* All form content — hidden when collapsed */}
+            {!formCollapsed && (
+              <>
+                <div style={s.field}>
+                  <label style={s.label}>Patient Full Name</label>
+                  <input style={s.input} type="text" placeholder="e.g. Baby Doe"
+                    value={patientName} onChange={e => setPatientName(e.target.value)} />
+                </div>
+                <div style={s.row}>
+                  <div style={{ ...s.field, flex: 1 }}>
+                    <label style={s.label}>Date of Birth</label>
+                    <input style={s.input} type="date" value={dob}
+                      max={new Date().toISOString().split("T")[0]}
+                      onChange={e => setDob(e.target.value)} />
                   </div>
-                );
-              })}
-            </div>
+                  <div style={{ ...s.field, flex: 1 }}>
+                    <label style={s.label}>Biological Sex</label>
+                    <select style={s.select} value={gender} onChange={e => setGender(e.target.value as Gender)}>
+                      <option value="">Select</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={s.field}>
+                  <label style={s.label}>Gestational Age at Birth (weeks)</label>
+                  <input style={s.input} type="number" min="22" max="50"
+                    value={gaAtBirth} onChange={e => setGaAtBirth(e.target.value)} />
+                </div>
+                <div style={s.visitsDivider}>
+                  <h3 style={s.visitsTitle}>Visits Logging Form</h3>
+                  <button style={s.addBtn} onClick={handleAddVisit}>+ Add Log Entry</button>
+                </div>
+                <div style={s.visitList}>
+                  {visits.map((visit, index) => {
+                    const cga = visit.date && dob && gaAtBirth
+                      ? cgaWeek(dob, ga, visit.date) : null;
+                    return (
+                      <div key={visit.id} data-visit-card style={s.visitCard}>
+                        <div style={s.visitCardHeader}>
+                          <span style={s.visitLabel}>Record #{index + 1}</span>
+                          {visits.length > 1 && (
+                            <button style={s.deleteBtn} onClick={() => handleRemoveVisit(visit.id)}>Delete</button>
+                          )}
+                        </div>
+                        <div style={s.field}>
+                          <label style={s.label}>Date of Examination</label>
+                          <input style={s.input} type="date" value={visit.date}
+                            min={dob || undefined}
+                            max={new Date().toISOString().split("T")[0]}
+                            onChange={e => handleUpdateVisit(visit.id, "date", e.target.value)} />
+                        </div>
+                        {cga !== null && (
+                          <div style={s.field}>
+                            <label style={s.label}>Corrected GA (auto)</label>
+                            <div style={s.cgaDisplay}>{cga.toFixed(1)}w</div>
+                          </div>
+                        )}
+                        <div style={s.row}>
+                          <div style={{ ...s.field, flex: 1 }}>
+                            <label style={s.label}>Weight (kg)</label>
+                            <input style={s.input} type="number" step="0.001" placeholder="0.00"
+                              value={visit.weight} onChange={e => handleUpdateVisit(visit.id, "weight", e.target.value)} />
+                          </div>
+                          <div style={{ ...s.field, flex: 1 }}>
+                            <label style={s.label}>Length (cm)</label>
+                            <input style={s.input} type="number" step="0.1" placeholder="0.0"
+                              value={visit.height} onChange={e => handleUpdateVisit(visit.id, "height", e.target.value)} />
+                          </div>
+                        </div>
+                        <div style={s.field}>
+                          <label style={s.label}>Head Circumference (cm)</label>
+                          <input style={s.input} type="number" step="0.1" placeholder="0.0"
+                            value={visit.headCirc} onChange={e => handleUpdateVisit(visit.id, "headCirc", e.target.value)} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
-          {/* ─── Right Column: Controls, Chart & Table Reports ─── */}
+
+          {/* ─── Right Column: Controls, Chart & Table ─── */}
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-            
+
             {/* Metric Selection Tabs & Gender Filter Row */}
             <div ref={controlsRef} style={s.controlsRow}>
               <div style={s.tabsGroup}>
@@ -684,10 +710,7 @@ export default function GrowchartDetail() {
                         setActiveMetric(item.key);
                         animateTab(e.currentTarget);
                       }}
-                      style={{
-                        ...s.tabBtn,
-                        ...(isActive ? s.activeTabBtn : {}),
-                      }}
+                      style={{ ...s.tabBtn, ...(isActive ? s.activeTabBtn : {}) }}
                     >
                       <span style={{ marginRight: 6 }}>{item.icon}</span>
                       {item.label}
@@ -706,12 +729,9 @@ export default function GrowchartDetail() {
                         <button
                           key={v}
                           onClick={() => setGenderView(v)}
-                          style={{
-                            ...s.segmentBtn,
-                            ...(isActive ? s.activeSegmentBtn : {}),
-                          }}
+                          style={{ ...s.segmentBtn, ...(isActive ? s.activeSegmentBtn : {}) }}
                         >
-                          {v === "male" ? "Boys" : v === "female" ? "Girls" : "Both"}
+                          {v === "male" ? "Boys" : "Girls"}
                         </button>
                       );
                     })}
@@ -720,14 +740,8 @@ export default function GrowchartDetail() {
               )}
             </div>
 
-            {/* Chart Area Viewport */}
-            {/* Chart Area Viewport */}
-            {/* Chart Area Viewport */}
-            {/* Chart Area Viewport */}
-            {/* Chart Area Viewport */}
+            {/* Chart Area */}
             <div ref={chartCardRef} style={s.chartCard}>
-              
-              {/* Clean Header Row: Just the Title and Standard Badge */}
               <div style={{
                 display: "flex",
                 justifyContent: "space-between",
@@ -746,7 +760,6 @@ export default function GrowchartDetail() {
                 </div>
               </div>
 
-              {/* ─── Chart Rendering Logic ─── */}
               {activeMetric !== "all" ? (
                 <MetricChart
                   data={chartData}
@@ -758,10 +771,7 @@ export default function GrowchartDetail() {
                   chartType={chartType}
                 />
               ) : (
-                /* "View All" Grid Dashboard Panel */
                 <div style={{ width: "100%" }}>
-                  
-                  {/* 🌟 NEW: Dedicated Gender Toggle Bar for View All Dashboard 🌟 */}
                   <div style={{
                     display: "flex",
                     justifyContent: "space-between",
@@ -775,62 +785,42 @@ export default function GrowchartDetail() {
                     <span style={{ fontSize: "14px", fontWeight: "bold", color: "#475569" }}>
                       Multi-Chart Reference Standard:
                     </span>
-                    
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button
                         onClick={() => setGender("male")}
                         style={{
-                          padding: "8px 16px",
-                          borderRadius: "6px",
-                          border: "1px solid",
+                          padding: "8px 16px", borderRadius: "6px", border: "1px solid",
                           borderColor: gender === "male" ? "#2563eb" : "#cbd5e1",
                           backgroundColor: gender === "male" ? "#2563eb" : "#ffffff",
                           color: gender === "male" ? "#ffffff" : "#475569",
-                          cursor: "pointer",
-                          fontWeight: "600",
-                          fontSize: "13px",
-                          boxShadow: gender === "male" ? "0 2px 4px rgba(37, 99, 235, 0.2)" : "none",
+                          cursor: "pointer", fontWeight: "600", fontSize: "13px",
+                          boxShadow: gender === "male" ? "0 2px 4px rgba(37,99,235,0.2)" : "none",
                           transition: "all 0.15s ease"
                         }}
-                      >
-                        ♂ Boys Only
-                      </button>
+                      >♂ Boys Only</button>
                       <button
                         onClick={() => setGender("female")}
                         style={{
-                          padding: "8px 16px",
-                          borderRadius: "6px",
-                          border: "1px solid",
+                          padding: "8px 16px", borderRadius: "6px", border: "1px solid",
                           borderColor: gender === "female" ? "#db2777" : "#cbd5e1",
                           backgroundColor: gender === "female" ? "#db2777" : "#ffffff",
                           color: gender === "female" ? "#ffffff" : "#475569",
-                          cursor: "pointer",
-                          fontWeight: "600",
-                          fontSize: "13px",
-                          boxShadow: gender === "female" ? "0 2px 4px rgba(219, 39, 119, 0.2)" : "none",
+                          cursor: "pointer", fontWeight: "600", fontSize: "13px",
+                          boxShadow: gender === "female" ? "0 2px 4px rgba(219,39,119,0.2)" : "none",
                           transition: "all 0.15s ease"
                         }}
-                      >
-                        ♀ Girls Only
-                      </button>
+                      >♀ Girls Only</button>
                     </div>
                   </div>
-
-                  {/* The Charts Grid Container */}
-                  <div style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    justifyContent: "center", 
-                    gap: "24px"
-                  }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "24px" }}>
                     {METRICS.filter(x => x.key !== "all").map(mItem => {
                       const singleData = buildData(visits, dob, ga, mItem.key, chartType);
                       return (
                         <div key={mItem.key} style={{
                           ...s.miniChartWrapper,
-                          flex: "1 1 calc(50% - 12px)", 
-                          minWidth: "500px",            
-                          maxWidth: "100%"              
+                          flex: "1 1 calc(50% - 12px)",
+                          minWidth: "500px",
+                          maxWidth: "100%"
                         }}>
                           <div style={s.chartHeader}>
                             <h4 style={s.miniChartTitle}>{mItem.label} ({mItem.yLabel})</h4>
@@ -843,7 +833,7 @@ export default function GrowchartDetail() {
                             genderView={gender === "female" ? "female" : "male"}
                             gaAtBirth={ga}
                             chartType={chartType}
-                            height={450} 
+                            height={450}
                           />
                         </div>
                       );
@@ -853,7 +843,7 @@ export default function GrowchartDetail() {
               )}
             </div>
 
-            {/* Structured History Breakdown Table */}
+            {/* Historical Audit Table */}
             <div style={s.tableCard}>
               <div style={s.chartHeader}>
                 <h3 style={s.chartTitle}>Historical Audit Logs Summary</h3>
@@ -895,6 +885,7 @@ export default function GrowchartDetail() {
     </div>
   );
 }
+
 // ─── Inline Styles Dictionary ────────────────────────────────────────────────
 const s: Record<string, React.CSSProperties> = {
   page: {
@@ -941,24 +932,15 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     fontSize: "13px",
     cursor: "pointer",
-    transition: "background-color 0.2s",
   },
   formCard: {
     backgroundColor: "#ffffff",
     borderRadius: "16px",
-    padding: "24px",
     boxShadow: "0 4px 6px -1px rgba(0,0,0,0.03), 0 2px 4px -2px rgba(0,0,0,0.03)",
     display: "flex",
     flexDirection: "column",
     gap: "16px",
-  },
-  formHeaderRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderBottom: "1px solid #f1f5f9",
-    paddingBottom: "12px",
-    marginBottom: "4px",
+    alignSelf: "start",
   },
   formTitle: {
     fontSize: "16px",
@@ -973,6 +955,17 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "13px",
     fontWeight: 600,
     cursor: "pointer",
+  },
+  collapseBtn: {
+    background: "none",
+    border: "1px solid #cbd5e1",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "12px",
+    color: "#475569",
+    padding: "4px 8px",
+    lineHeight: 1,
+    flexShrink: 0,
   },
   field: {
     display: "flex",
@@ -1164,11 +1157,6 @@ const s: Record<string, React.CSSProperties> = {
     borderRadius: "9999px",
     fontSize: "11px",
     fontWeight: 700,
-  },
-  allGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))",
-    gap: "24px",
   },
   miniChartWrapper: {
     backgroundColor: "#f8fafc",
