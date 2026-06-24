@@ -28,19 +28,53 @@ import {
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler, Title);
 
 // ─── PDF helpers ──────────────────────────────────────────────────────────────
-async function downloadChartAsPdf(wrapperEl: HTMLElement, filename: string) {
-  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-    import("jspdf"),
-    import("html2canvas"),
-  ]);
-  const canvas = await html2canvas(wrapperEl, {
-    scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
-  });
-  const imgData = canvas.toDataURL("image/png");
-  const imgW = canvas.width, imgH = canvas.height;
-  const orientation = imgW > imgH ? "landscape" : "portrait";
-  const pdf = new jsPDF({ orientation, unit: "px", format: [imgW / 2, imgH / 2] });
-  pdf.addImage(imgData, "PNG", 0, 0, imgW / 2, imgH / 2);
+async function downloadChartAsPdf(wrapperEl: HTMLElement, filename: string, heading?: string) {
+  const { default: jsPDF } = await import("jspdf");
+
+  const chartCanvas = wrapperEl.querySelector("canvas");
+  if (!chartCanvas) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const srcW = chartCanvas.width;
+  const srcH = chartCanvas.height;
+
+  // Heading bar height in physical pixels
+  const BAR_H = heading ? Math.round(44 * dpr) : 0;
+
+  const offscreen = document.createElement("canvas");
+  offscreen.width  = srcW;
+  offscreen.height = srcH + BAR_H;
+  const offCtx = offscreen.getContext("2d")!;
+
+  // White background
+  offCtx.fillStyle = "#ffffff";
+  offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+
+  // Heading text + divider
+  if (heading && BAR_H > 0) {
+    const fontSize = Math.round(15 * dpr);
+    offCtx.fillStyle = "#1e293b";
+    offCtx.font = `700 ${fontSize}px system-ui, -apple-system, sans-serif`;
+    offCtx.textAlign = "center";
+    offCtx.textBaseline = "middle";
+    offCtx.fillText(heading, srcW / 2, BAR_H / 2);
+    offCtx.strokeStyle = "#e2e8f0";
+    offCtx.lineWidth = dpr;
+    offCtx.beginPath();
+    offCtx.moveTo(0, BAR_H - dpr);
+    offCtx.lineTo(srcW, BAR_H - dpr);
+    offCtx.stroke();
+  }
+
+  // Chart canvas below heading
+  offCtx.drawImage(chartCanvas, 0, BAR_H);
+
+  const imgData = offscreen.toDataURL("image/png", 1.0);
+  const ptW = offscreen.width  * 0.75;
+  const ptH = offscreen.height * 0.75;
+  const orientation = ptW > ptH ? "landscape" : "portrait";
+  const pdf = new jsPDF({ orientation, unit: "pt", format: [ptW, ptH] });
+  pdf.addImage(imgData, "PNG", 0, 0, ptW, ptH, undefined, "FAST");
   pdf.save(filename);
 }
 
@@ -51,12 +85,12 @@ if (typeof document !== "undefined" && !document.getElementById("who-pdf-spin"))
   document.head.appendChild(st);
 }
 
-function PdfButton({ wrapperRef, filename }: { wrapperRef: React.RefObject<HTMLDivElement | null>; filename: string }) {
+function PdfButton({ wrapperRef, filename, heading }: { wrapperRef: React.RefObject<HTMLDivElement | null>; filename: string; heading?: string }) {
   const [loading, setLoading] = React.useState(false);
   async function handleClick() {
     if (!wrapperRef.current || loading) return;
     setLoading(true);
-    try { await downloadChartAsPdf(wrapperRef.current, filename); }
+    try { await downloadChartAsPdf(wrapperRef.current, filename, heading); }
     catch (err) { console.error("PDF export failed:", err); }
     finally { setLoading(false); }
   }
@@ -304,6 +338,9 @@ function SingleMetricChart({
   const chartWrapperRef = React.useRef<HTMLDivElement>(null);
   const metricLabel = metric === "height" ? "length" : metric === "weight" ? "weight" : "head-circ";
   const pdfFilename = `who-${metricLabel}-${genderView}.pdf`;
+  const metricTitle = metric === "height" ? "Length for Age" : metric === "weight" ? "Weight for Age" : "Head Circumference for Age";
+  const genderTitle = genderView === "male" ? "Boys" : genderView === "female" ? "Girls" : "Boys & Girls";
+  const pdfHeading = `${metricTitle} · ${genderTitle}`;
   const unitLabel     = metric === "weight" ? "kg" : "cm";
   const yStep         = metric === "weight" ? 1 : 5;
   const yMinResolved  = metric === "weight" ? 2 : metric === "height" ? 35 : 25;
@@ -418,7 +455,7 @@ function SingleMetricChart({
   return (
     <div style={{ width: "100%" }}>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-        <PdfButton wrapperRef={chartWrapperRef} filename={pdfFilename} />
+        <PdfButton wrapperRef={chartWrapperRef} filename={pdfFilename} heading={pdfHeading} />
       </div>
       <div ref={chartWrapperRef} style={{ width: "100%", height, position: "relative", backgroundColor: "#fff" }}>
         <Line data={chartData} options={options} plugins={[percentileLabelsPlugin]} />

@@ -15,7 +15,7 @@ import {
   type RefPoint,
 } from "./referenceData";
 
-// ─── Inject animation CSS once ────────────────────────────────────────────────
+// ─── Inject animation + datepicker fix CSS once ───────────────────────────────
 if (typeof document !== "undefined" && !document.getElementById("growchart-anim-css")) {
   const tag = document.createElement("style");
   tag.id = "growchart-anim-css";
@@ -24,6 +24,26 @@ if (typeof document !== "undefined" && !document.getElementById("growchart-anim-
     .gc-form-card  { will-change: transform, opacity; }
     .gc-chart-card { will-change: transform, opacity; }
     .gc-badge      { will-change: transform, opacity; }
+
+    /* DatePicker: full-width, consistent sizing, clean alignment */
+    .gc-datepicker-wrap { position: relative; width: 100%; }
+    .gc-datepicker-wrap .react-datepicker-wrapper { width: 100%; display: block; }
+    .gc-datepicker-wrap .react-datepicker__input-container { width: 100%; display: block; }
+    .gc-datepicker-wrap .react-datepicker__input-container input { width: 100%; box-sizing: border-box; }
+    .gc-datepicker-wrap .react-datepicker-popper { z-index: 9999; }
+    .gc-datepicker-wrap .react-datepicker { font-size: 12px; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.10); }
+    .gc-datepicker-wrap .react-datepicker__header { background: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 8px 8px 0 0; padding-top: 8px; }
+    .gc-datepicker-wrap .react-datepicker__current-month { font-size: 12px; font-weight: 700; color: #0f172a; }
+    .gc-datepicker-wrap .react-datepicker__day-name,
+    .gc-datepicker-wrap .react-datepicker__day { width: 28px; line-height: 28px; margin: 1px; font-size: 11px; }
+    .gc-datepicker-wrap .react-datepicker__day--selected,
+    .gc-datepicker-wrap .react-datepicker__day--keyboard-selected { background-color: #2563eb; border-radius: 4px; color: #fff; }
+    .gc-datepicker-wrap .react-datepicker__day:hover { background-color: #eff6ff; border-radius: 4px; }
+    .gc-datepicker-wrap .react-datepicker__navigation { top: 10px; }
+    .gc-datepicker-wrap .react-datepicker__month-select,
+    .gc-datepicker-wrap .react-datepicker__year-select { font-size: 11px; padding: 2px 4px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; }
+    .gc-datepicker-wrap .react-datepicker__close-icon::after { background-color: #94a3b8; font-size: 12px; width: 14px; height: 14px; }
+    .gc-datepicker-wrap .react-datepicker__today-button { font-size: 11px; padding: 4px; background: #f8fafc; border-top: 1px solid #e2e8f0; }
   `;
   document.head.appendChild(tag);
 }
@@ -145,7 +165,12 @@ interface VisitCardProps {
 
 function VisitCard({ v, idx, isNew, canRemove, dob, gaAtBirth, errors, onRemove, onUpdate, onAnimateOut, onAnimateInDone }: VisitCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const heightRef = useRef<HTMLInputElement>(null);
+  const weightRef = useRef<HTMLInputElement>(null);
+  const headCircRef = useRef<HTMLInputElement>(null);
+  const fieldsRef = useRef<HTMLDivElement>(null);
 
+  // Stagger-animate fields when the card first appears
   useEffect(() => {
     if (isNew && cardRef.current) {
       gsap.fromTo(
@@ -153,13 +178,55 @@ function VisitCard({ v, idx, isNew, canRemove, dob, gaAtBirth, errors, onRemove,
         { opacity: 0, y: 22, scale: 0.94 },
         {
           opacity: 1, y: 0, scale: 1, duration: 0.45, ease: "back.out(1.6)", clearProps: "transform",
-          onComplete: onAnimateInDone,
+          onComplete: () => {
+            // stagger the inner fields after card arrives
+            if (fieldsRef.current) {
+              gsap.fromTo(
+                fieldsRef.current.querySelectorAll("input, .gc-cga-display"),
+                { opacity: 0, x: -10 },
+                { opacity: 1, x: 0, duration: 0.28, stagger: 0.07, ease: "power2.out", clearProps: "transform" }
+              );
+            }
+            onAnimateInDone();
+          },
         }
       );
     } else if (cardRef.current) {
       gsap.set(cardRef.current, { opacity: 1, y: 0, scale: 1 });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Shake input when its error appears
+  useEffect(() => {
+    if (errors?.headCirc && headCircRef.current) {
+      gsap.timeline()
+        .to(headCircRef.current, { x: -6, duration: 0.07, ease: "power1.inOut" })
+        .to(headCircRef.current, { x: 6,  duration: 0.07, ease: "power1.inOut" })
+        .to(headCircRef.current, { x: -4, duration: 0.06, ease: "power1.inOut" })
+        .to(headCircRef.current, { x: 4,  duration: 0.06, ease: "power1.inOut" })
+        .to(headCircRef.current, { x: 0,  duration: 0.05, clearProps: "transform" });
+    }
+  }, [errors?.headCirc]);
+
+  // Focus/blur fromTo for each measurement input
+  function handleFocus(ref: React.RefObject<HTMLInputElement | null>) {
+    if (ref.current) {
+      gsap.fromTo(
+        ref.current,
+        { scale: 1, boxShadow: "0 0 0 0px rgba(37,99,235,0)" },
+        { scale: 1.025, boxShadow: "0 0 0 3px rgba(37,99,235,0.18)", duration: 0.22, ease: "power2.out" }
+      );
+    }
+  }
+  function handleBlur(ref: React.RefObject<HTMLInputElement | null>) {
+    if (ref.current) {
+      gsap.fromTo(
+        ref.current,
+        { scale: 1.025, boxShadow: "0 0 0 3px rgba(37,99,235,0.18)" },
+        { scale: 1, boxShadow: "0 0 0 0px rgba(37,99,235,0)", duration: 0.18, ease: "power1.in", clearProps: "transform" }
+      );
+    }
+  }
 
   function handleRemove() {
     if (cardRef.current) onAnimateOut(v.id, cardRef.current);
@@ -175,45 +242,74 @@ function VisitCard({ v, idx, isNew, canRemove, dob, gaAtBirth, errors, onRemove,
         )}
       </div>
 
-      <div style={s.field}>
-        <label style={s.label}>Date</label>
-        <DatePicker
-          selected={v.date ? new Date(v.date) : null}
-          onChange={(date: Date | null) =>
-            onUpdate(v.id, "date", date ? date.toISOString().split("T")[0] : "")
-          }
-          dateFormat="dd MMM yyyy"
-          placeholderText="Select date"
-          showMonthDropdown showYearDropdown dropdownMode="select"
-          isClearable todayButton="Today"
-          minDate={dob ? new Date(dob) : undefined}
-          maxDate={new Date()}
-          customInput={<input style={s.input} />}
-        />
-      </div>
-
-      {v.date && dob && gaAtBirth && (
+      <div ref={fieldsRef}>
         <div style={s.field}>
-          <label style={s.label}>Corrected GA (auto)</label>
-          <div style={s.cgaDisplay}>
-            {cgaWeek(dob, parseFloat(gaAtBirth) || 40, v.date).toFixed(1)}w
+          <label style={s.label}>Date</label>
+          <div className="gc-datepicker-wrap">
+            <DatePicker
+              selected={v.date ? new Date(v.date) : null}
+              onChange={(date: Date | null) =>
+                onUpdate(v.id, "date", date ? date.toISOString().split("T")[0] : "")
+              }
+              dateFormat="dd MMM yyyy"
+              placeholderText="Select date"
+              showMonthDropdown showYearDropdown dropdownMode="select"
+              isClearable todayButton="Today"
+              minDate={dob ? new Date(dob) : undefined}
+              maxDate={new Date()}
+              customInput={<input style={s.input} />}
+            />
           </div>
         </div>
-      )}
 
-      <div style={s.row}>
-        <div style={s.field}>
-          <label style={s.label}>Length (cm)</label>
-          <input style={s.input} type="number" value={v.height} onChange={e => onUpdate(v.id, "height", e.target.value)} />
-        </div>
-        <div style={s.field}>
-          <label style={s.label}>Weight (kg)</label>
-          <input style={s.input} type="number" value={v.weight} onChange={e => onUpdate(v.id, "weight", e.target.value)} step="0.01" />
-        </div>
-        <div style={s.field}>
-          <label style={s.label}>Head Circ. (cm)</label>
-          {errors?.headCirc && <span style={s.errorText}>{errors.headCirc}</span>}
-          <input style={s.input} type="number" value={v.headCirc} onChange={e => onUpdate(v.id, "headCirc", e.target.value)} />
+        {v.date && dob && gaAtBirth && (
+          <div style={{ ...s.field, marginTop: 6 }}>
+            <label style={s.label}>Corrected GA (auto)</label>
+            <div className="gc-cga-display" style={s.cgaDisplay}>
+              {cgaWeek(dob, parseFloat(gaAtBirth) || 40, v.date).toFixed(1)}w
+            </div>
+          </div>
+        )}
+
+        <div style={{ ...s.row, marginTop: 6 }}>
+          <div style={s.field}>
+            <label style={s.label}>Length (cm)</label>
+            <input
+              ref={heightRef}
+              style={s.input}
+              type="number"
+              value={v.height}
+              onChange={e => onUpdate(v.id, "height", e.target.value)}
+              onFocus={() => handleFocus(heightRef)}
+              onBlur={() => handleBlur(heightRef)}
+            />
+          </div>
+          <div style={s.field}>
+            <label style={s.label}>Weight (kg)</label>
+            <input
+              ref={weightRef}
+              style={s.input}
+              type="number"
+              value={v.weight}
+              onChange={e => onUpdate(v.id, "weight", e.target.value)}
+              step="0.01"
+              onFocus={() => handleFocus(weightRef)}
+              onBlur={() => handleBlur(weightRef)}
+            />
+          </div>
+          <div style={s.field}>
+            <label style={s.label}>Head Circ. (cm)</label>
+            {errors?.headCirc && <span style={s.errorText}>{errors.headCirc}</span>}
+            <input
+              ref={headCircRef}
+              style={s.input}
+              type="number"
+              value={v.headCirc}
+              onChange={e => onUpdate(v.id, "headCirc", e.target.value)}
+              onFocus={() => handleFocus(headCircRef)}
+              onBlur={() => handleBlur(headCircRef)}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -251,6 +347,10 @@ export default function GrowChart() {
   const chartCardRef = useRef<HTMLDivElement>(null);
   const patientBadgeRef = useRef<HTMLDivElement>(null);
   const plotBtnRef = useRef<HTMLButtonElement>(null);
+  const patientInfoFieldsRef = useRef<HTMLDivElement>(null);
+  const patientNameInputRef = useRef<HTMLInputElement>(null);
+  const gaInputRef = useRef<HTMLInputElement>(null);
+  const termWeekInputRef = useRef<HTMLInputElement>(null);
 
   // ── Page mount animation ────────────────────────────────────────────────────
   useEffect(() => {
@@ -258,6 +358,20 @@ export default function GrowChart() {
       gsap.from(formCardRef.current, { x: -40, opacity: 0, duration: 0.7, ease: "power3.out" });
       gsap.from(chartCardRef.current, { x: 40, opacity: 0, duration: 0.7, ease: "power3.out", delay: 0.15 });
     }, pageRef);
+
+    // Stagger Patient Info fields — outside context so ref is resolved after paint
+    const fieldsEl = patientInfoFieldsRef.current;
+    if (fieldsEl) {
+      const targets = fieldsEl.querySelectorAll("input, .gc-gender-row");
+      if (targets.length) {
+        gsap.fromTo(
+          targets,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.35, stagger: 0.08, ease: "power2.out", delay: 0.45, clearProps: "transform" }
+        );
+      }
+    }
+
     return () => ctx.revert();
   }, []);
 
@@ -375,6 +489,24 @@ export default function GrowChart() {
 
   const splitWeekClamped = Math.max(22, Math.min(50, termWeek));
 
+  // ── Input field focus/blur fromTo animations ────────────────────────────────
+  function animateFocus(el: HTMLInputElement | null) {
+    if (!el) return;
+    gsap.fromTo(
+      el,
+      { scale: 1, boxShadow: "0 0 0 0px rgba(37,99,235,0)" },
+      { scale: 1.025, boxShadow: "0 0 0 3px rgba(37,99,235,0.18)", duration: 0.22, ease: "power2.out" }
+    );
+  }
+  function animateBlur(el: HTMLInputElement | null) {
+    if (!el) return;
+    gsap.fromTo(
+      el,
+      { scale: 1.025, boxShadow: "0 0 0 3px rgba(37,99,235,0.18)" },
+      { scale: 1, boxShadow: "0 0 0 0px rgba(37,99,235,0)", duration: 0.18, ease: "power1.in", clearProps: "transform" }
+    );
+  }
+
   return (
     <div ref={pageRef} style={s.page}>
       <div style={s.wrapper}>
@@ -425,36 +557,53 @@ export default function GrowChart() {
               <form onSubmit={handlePlot} style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: 8 }}>
                 <h3 style={s.sectionTitle}>Patient Info</h3>
 
+                <div ref={patientInfoFieldsRef} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div style={s.field}>
                   <label style={s.label}>Patient Name</label>
-                  <input style={s.input} value={patientName} onChange={e => setHomeForm(prev => ({ ...prev, patientName: e.target.value }))} />
-                </div>
-
-                <div style={s.field}>
-                  <label style={s.label}>Date of Birth</label>
-                  <DatePicker
-                    selected={dob ? new Date(dob) : null}
-                    onChange={(date: Date | null) =>
-                      setHomeForm(prev => ({ ...prev, dob: date ? date.toISOString().split("T")[0] : "" }))
-                    }
-                    dateFormat="dd MMM yyyy" placeholderText="Select date"
-                    showMonthDropdown showYearDropdown dropdownMode="select"
-                    yearDropdownItemNumber={10} scrollableYearDropdown
-                    maxDate={new Date()} isClearable todayButton="Today"
-                    customInput={<input style={s.input} />}
+                  <input
+                    ref={patientNameInputRef}
+                    style={s.input}
+                    value={patientName}
+                    onChange={e => setHomeForm(prev => ({ ...prev, patientName: e.target.value }))}
+                    onFocus={() => animateFocus(patientNameInputRef.current)}
+                    onBlur={() => animateBlur(patientNameInputRef.current)}
                   />
                 </div>
 
                 <div style={s.field}>
+                  <label style={s.label}>Date of Birth</label>
+                  <div className="gc-datepicker-wrap">
+                    <DatePicker
+                      selected={dob ? new Date(dob) : null}
+                      onChange={(date: Date | null) =>
+                        setHomeForm(prev => ({ ...prev, dob: date ? date.toISOString().split("T")[0] : "" }))
+                      }
+                      dateFormat="dd MMM yyyy" placeholderText="Select date"
+                      showMonthDropdown showYearDropdown dropdownMode="select"
+                      yearDropdownItemNumber={10} scrollableYearDropdown
+                      maxDate={new Date()} isClearable todayButton="Today"
+                      customInput={<input style={s.input} />}
+                    />
+                  </div>
+                </div>
+
+                <div style={s.field}>
                   <label style={s.label}>GA at Birth (weeks)</label>
-                  <input style={s.input} type="number" value={gaAtBirth}
+                  <input
+                    ref={gaInputRef}
+                    style={s.input}
+                    type="number"
+                    value={gaAtBirth}
                     onChange={e => setHomeForm(prev => ({ ...prev, gaAtBirth: e.target.value }))}
-                    min="22" max="44" step="1" />
+                    min="22" max="44" step="1"
+                    onFocus={() => animateFocus(gaInputRef.current)}
+                    onBlur={() => animateBlur(gaInputRef.current)}
+                  />
                 </div>
 
                 <div style={s.field}>
                   <label style={s.label}>Gender</label>
-                  <div style={s.genderRow}>
+                  <div className="gc-gender-row" style={s.genderRow}>
                     {(["male", "female"] as const).map(g => (
                       <button key={g} type="button" data-gender={g}
                         onClick={() => handleGenderClick(g)}
@@ -467,9 +616,16 @@ export default function GrowChart() {
 
                 <div style={s.field}>
                   <label style={s.label}>Show Fenton up to week (default 50)</label>
-                  <input style={s.input} type="number" value={termWeek}
+                  <input
+                    ref={termWeekInputRef}
+                    style={s.input}
+                    type="number"
+                    value={termWeek}
                     onChange={e => setTermWeek(Number(e.target.value))}
+                    onFocus={() => animateFocus(termWeekInputRef.current)}
+                    onBlur={() => animateBlur(termWeekInputRef.current)}
                   />
+                </div>
                 </div>
 
                 <div style={s.divider} />
@@ -582,7 +738,7 @@ const s: Record<string, React.CSSProperties> = {
   patientName: { fontWeight: 700, fontSize: "14px", color: "#0f172a" },
   patientDob: { fontSize: "12px", color: "#475569", marginLeft: 8 },
   body: { display: "flex", gap: "20px", alignItems: "flex-start", width: "100%" },
-  formCard: { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", flexShrink: 0, display: "flex", flexDirection: "column", gap: "0px" },
+  formCard: { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", flexShrink: 0, display: "flex", flexDirection: "column", gap: "0px", alignSelf: "flex-start", position: "sticky", top: 0, maxHeight: "calc(100vh - 72px)", overflowY: "auto" },
   chartCard: { backgroundColor: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "24px", flex: 1, minWidth: 0 },
   sectionTitle: { margin: 0, fontSize: "14px", fontWeight: 700, color: "#0f172a" },
   field: { display: "flex", flexDirection: "column", gap: "4px" },
@@ -598,7 +754,7 @@ const s: Record<string, React.CSSProperties> = {
   gFemale: { backgroundColor: "#fdf2f8", borderColor: "#db2777", color: "#db2777" },
   visitsHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   addBtn: { padding: "4px 12px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer" },
-  visitList: { display: "flex", flexDirection: "column", gap: "10px", maxHeight: "340px", overflowY: "auto" },
+  visitList: { display: "flex", flexDirection: "column", gap: "10px" },
   visitCard: { border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px", backgroundColor: "#f8fafc" },
   visitCardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" },
   visitLabel: { fontSize: "12px", fontWeight: 700, color: "#0f172a" },

@@ -274,27 +274,32 @@ const fentonBackgroundPlugin = {
 
 // ─── PDF download helper ───────────────────────────────────────────────────────
 async function downloadChartAsPdf(wrapperEl: HTMLElement, filename: string) {
-  // Dynamically import so bundle stays lean if user never clicks
-  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-    import("jspdf"),
-    import("html2canvas"),
-  ]);
+  const { default: jsPDF } = await import("jspdf");
 
-  const canvas = await html2canvas(wrapperEl, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: "#ffffff",
-    logging: false,
-  });
+  // Grab the Chart.js canvas directly — already rendered at devicePixelRatio, no re-rasterisation
+  const chartCanvas = wrapperEl.querySelector("canvas");
+  if (!chartCanvas) return;
 
-  const imgData = canvas.toDataURL("image/png");
-  const imgW = canvas.width;
-  const imgH = canvas.height;
+  const srcW = chartCanvas.width;
+  const srcH = chartCanvas.height;
 
-  // Landscape if wider than tall
-  const orientation = imgW > imgH ? "landscape" : "portrait";
-  const pdf = new jsPDF({ orientation, unit: "px", format: [imgW / 2, imgH / 2] });
-  pdf.addImage(imgData, "PNG", 0, 0, imgW / 2, imgH / 2);
+  // Composite onto a white-background offscreen canvas
+  const offscreen = document.createElement("canvas");
+  offscreen.width  = srcW;
+  offscreen.height = srcH;
+  const offCtx = offscreen.getContext("2d")!;
+  offCtx.fillStyle = "#ffffff";
+  offCtx.fillRect(0, 0, srcW, srcH);
+  offCtx.drawImage(chartCanvas, 0, 0);
+
+  const imgData = offscreen.toDataURL("image/png", 1.0);
+
+  // 1px = 0.75pt at 96dpi — preserves true pixel dimensions in the PDF
+  const ptW = srcW * 0.75;
+  const ptH = srcH * 0.75;
+  const orientation = ptW > ptH ? "landscape" : "portrait";
+  const pdf = new jsPDF({ orientation, unit: "pt", format: [ptW, ptH] });
+  pdf.addImage(imgData, "PNG", 0, 0, ptW, ptH, undefined, "FAST");
   pdf.save(filename);
 }
 
