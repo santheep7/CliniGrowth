@@ -12,6 +12,8 @@
   "dependencies": {
     "chart.js": "^4.5.1",
     "gsap": "^3.15.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "react": "^19.2.6",
     "react-chartjs-2": "^5.3.1",
     "react-datepicker": "^9.1.0",

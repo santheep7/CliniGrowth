@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import CollapsibleSidebar from "./CollapsibleSidebar";
 
 import { Line } from "react-chartjs-2";
@@ -41,9 +41,7 @@ interface FentonChartProps {
   gender: Gender;
   patientData: PatientPoint[];
   splitWeek: number;
-  // Sidebar panel content — rendered in the collapsible form sidebar
   sidebarContent?: React.ReactNode;
-  // Called when user clicks the collapsed rail to re-open sidebar
   onSidebarOpen?: () => void;
 }
 
@@ -59,8 +57,8 @@ const CM_RAW_MAX = 85;
 const REF_WEEKS = [22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50] as const;
 const PERCENTILES = ["p3", "p15", "p50", "p85", "p97"] as const;
 
-const SIDEBAR_OPEN_W = 300;   // px — expanded width
-const SIDEBAR_CLOSED_W = 44;  // px — collapsed rail width
+// Patient dataset indices (always last 3 before rightAxisHelper)
+const PATIENT_DATASET_LABELS = ["Patient Length", "Patient Head Circumference", "Patient Weight"];
 
 function mapWeightValue(value: number) {
   return (value / WEIGHT_RAW_MAX) * WEIGHT_BAND_MAX;
@@ -143,10 +141,14 @@ function buildPatientDataset(label: string, points: Array<{ x: number; y: number
     borderWidth: 2.5,
     borderDash: dash ?? [],
     tension: 0.35,
-    pointRadius: 4,
-    pointBackgroundColor: COLORS.patient,
+    // ── Bolder points ──────────────────────────────────────────
+    pointRadius: 8,
+    pointHoverRadius: 11,
+    pointBorderWidth: 2.5,
     pointBorderColor: "#fff",
-    pointBorderWidth: 1.5,
+    pointBackgroundColor: COLORS.patient,
+    // ── Draw order: high number = rendered on top ───────────────
+    order: 0,
     spanGaps: true,
     fill: false,
   } as ExtendedDataset;
@@ -191,6 +193,7 @@ function drawOnLineLabel(ctx: CanvasRenderingContext2D, text: string, px: number
   ctx.restore();
 }
 
+// ─── Plugin: background bands + axis labels + patient points on top ───────────
 const fentonBackgroundPlugin = {
   id: "fentonBackground",
   afterDraw(chart: any) {
@@ -206,18 +209,7 @@ const fentonBackgroundPlugin = {
     ctx.fillRect(left, top, right - left, splitPixel - top);
 
     ctx.save(); ctx.strokeStyle = "#475569"; ctx.lineWidth = 2.5; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(left, splitPixel); ctx.lineTo(right, splitPixel); ctx.stroke(); ctx.restore();
-
-    ctx.save(); ctx.strokeStyle = "#475569"; ctx.lineWidth = 2.5; ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(right, top); ctx.lineTo(right, bottom); ctx.stroke(); ctx.restore();
-
-    ctx.save();
-    const x40 = scales.x.getPixelForValue(40);
-    ctx.strokeStyle = "#475569"; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.moveTo(x40, top); ctx.lineTo(x40, bottom); ctx.stroke(); ctx.restore();
-
-    ctx.save(); ctx.fillStyle = "#475569"; ctx.font = "11px system-ui, sans-serif"; ctx.textAlign = "center";
-    ctx.fillText("Term (40w)", x40, top - 8); ctx.restore();
 
     const weightPixel0 = scales.y.getPixelForValue(0);
     const midWeightPixel = (weightPixel0 + splitPixel) / 2;
@@ -254,18 +246,119 @@ const fentonBackgroundPlugin = {
         }
       });
     });
+
+    // ── Re-draw patient points on top of everything ────────────────────────────
+    chart.data.datasets.forEach((ds: any, i: number) => {
+      if (!PATIENT_DATASET_LABELS.includes(ds.label)) return;
+      const meta = chart.getDatasetMeta(i);
+      if (!meta?.data?.length) return;
+      meta.data.forEach((element: any) => {
+        if (!element || element.x == null || element.y == null) return;
+        const r = ds.pointRadius ?? 8;
+        const bw = ds.pointBorderWidth ?? 2.5;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(element.x, element.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = ds.pointBackgroundColor ?? ds.backgroundColor ?? "#111827";
+        ctx.fill();
+        ctx.lineWidth = bw;
+        ctx.strokeStyle = ds.pointBorderColor ?? "#fff";
+        ctx.stroke();
+        ctx.restore();
+      });
+    });
+
     ctx.restore();
   },
 };
 
-// ─── Main FentonChart component ───────────────────────────────────────────────
+// ─── PDF download helper ───────────────────────────────────────────────────────
+async function downloadChartAsPdf(wrapperEl: HTMLElement, filename: string) {
+  // Dynamically import so bundle stays lean if user never clicks
+  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+    import("jspdf"),
+    import("html2canvas"),
+  ]);
 
+  const canvas = await html2canvas(wrapperEl, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: "#ffffff",
+    logging: false,
+  });
+
+  const imgData = canvas.toDataURL("image/png");
+  const imgW = canvas.width;
+  const imgH = canvas.height;
+
+  // Landscape if wider than tall
+  const orientation = imgW > imgH ? "landscape" : "portrait";
+  const pdf = new jsPDF({ orientation, unit: "px", format: [imgW / 2, imgH / 2] });
+  pdf.addImage(imgData, "PNG", 0, 0, imgW / 2, imgH / 2);
+  pdf.save(filename);
+}
+
+// ─── PDF Button component ──────────────────────────────────────────────────────
+function PdfButton({ wrapperRef, filename }: { wrapperRef: React.RefObject<HTMLDivElement | null>; filename: string }) {
+  const [loading, setLoading] = useState(false);
+
+  async function handleClick() {
+    if (!wrapperRef.current || loading) return;
+    setLoading(true);
+    try {
+      await downloadChartAsPdf(wrapperRef.current, filename);
+    } catch (err) {
+      console.error("PDF export failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      style={{
+        background: "none",
+        border: "none",
+        padding: 0,
+        color: loading ? "#94a3b8" : "#0f172a",
+        fontSize: 13,
+        fontWeight: 700,
+        textDecoration: "underline",
+        textUnderlineOffset: 3,
+        cursor: loading ? "not-allowed" : "pointer",
+        letterSpacing: "0.04em",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+      }}
+    >
+      {loading ? (
+        <>
+          <span style={{ display: "inline-block", width: 11, height: 11, border: "2px solid #94a3b8", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+          Generating…
+        </>
+      ) : "GET PDF"}
+    </button>
+  );
+}
+
+// Inject spinner keyframes once
+if (typeof document !== "undefined" && !document.getElementById("fenton-pdf-spin")) {
+  const st = document.createElement("style");
+  st.id = "fenton-pdf-spin";
+  st.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
+  document.head.appendChild(st);
+}
+
+// ─── Main FentonChart component ───────────────────────────────────────────────
 export default function FentonChart({ gender, patientData, sidebarContent, onSidebarOpen }: FentonChartProps) {
   if (gender === "") {
     console.warn("[FentonChart] gender prop is empty.");
   }
 
-
+  const chartWrapperRef = useRef<HTMLDivElement>(null);
   const showReference = gender === "male" || gender === "female";
   const isMale = gender === "male";
 
@@ -304,22 +397,28 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
       ...buildPatientDataset("Patient Length",
         patientData.filter((p): p is PatientPoint & { height: number } => p.height != null)
           .map(p => ({ x: p.week, y: p.height, label: p.label })), [6, 4]),
-      borderColor: "#16a34a", backgroundColor: "#16a34a", pointBackgroundColor: "#16a34a",
-      borderWidth: 4, pointRadius: 7, pointHoverRadius: 9,
+      borderColor: "#16a34a", backgroundColor: "#16a34a",
+      pointBackgroundColor: "#16a34a", pointBorderColor: "#fff",
+      borderWidth: 4, pointRadius: 8, pointHoverRadius: 11, pointBorderWidth: 2.5,
+      order: 0,
     };
     const patientHead = {
       ...buildPatientDataset("Patient Head Circumference",
         patientData.filter((p): p is PatientPoint & { headCirc: number } => p.headCirc != null)
           .map(p => ({ x: p.week, y: p.headCirc, label: p.label })), [6, 4]),
-      borderColor: "#dc2626", backgroundColor: "#dc2626", pointBackgroundColor: "#dc2626",
-      borderWidth: 4, pointRadius: 7,
+      borderColor: "#dc2626", backgroundColor: "#dc2626",
+      pointBackgroundColor: "#dc2626", pointBorderColor: "#fff",
+      borderWidth: 4, pointRadius: 8, pointHoverRadius: 11, pointBorderWidth: 2.5,
+      order: 0,
     };
     const patientWeight = {
       ...buildPatientDataset("Patient Weight",
         patientData.filter((p): p is PatientPoint & { weight: number } => p.weight != null)
           .map(p => ({ x: p.week, y: p.weight, label: p.label })), [6, 4]),
-      borderColor: "#ebf709ff", backgroundColor: "#e9f817ff", pointBackgroundColor: "#e6f519ff",
-      borderWidth: 4, pointRadius: 7,
+      borderColor: "#ca8a04", backgroundColor: "#ca8a04",
+      pointBackgroundColor: "#ca8a04", pointBorderColor: "#fff",
+      borderWidth: 4, pointRadius: 8, pointHoverRadius: 11, pointBorderWidth: 2.5,
+      order: 0,
     };
     const rightAxisHelper: ExtendedDataset = {
       label: "yRightHelper",
@@ -328,10 +427,17 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
       borderWidth: 0, pointRadius: 0, pointHoverRadius: 0,
       tension: 0, showLine: false, fill: false,
       backgroundColor: "transparent", borderColor: "transparent",
+      order: 999,
     } as ExtendedDataset;
 
-    return [...buildSeries(lRef, "Length"), ...buildSeries(hcRef, "Head Circumference"),
-            ...buildSeries(wRef, "Weight"), patientLength, patientHead, patientWeight, rightAxisHelper];
+    // Reference curves get a high order so they render before patient points
+    const refSeries = [
+      ...buildSeries(lRef, "Length"),
+      ...buildSeries(hcRef, "Head Circumference"),
+      ...buildSeries(wRef, "Weight"),
+    ].map(ds => ({ ...ds, order: 10 }));
+
+    return [...refSeries, patientLength, patientHead, patientWeight, rightAxisHelper];
   }, [gender, patientData]);
 
   const data: ChartData<"line"> = useMemo(() => ({ datasets: datasets as ChartDataset<"line">[] }), [datasets]);
@@ -374,6 +480,8 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
     },
   }), [yTickValues, xMax]);
 
+  const pdfFilename = `fenton-${gender || "chart"}.pdf`;
+
   // ── Layout: sidebar (optional) + chart ──────────────────────────────────────
   if (sidebarContent) {
     return (
@@ -382,13 +490,18 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
           {sidebarContent}
         </CollapsibleSidebar>
 
-        <div style={{ flex: 1, minWidth: 0, minHeight: 920 }}>
-          {!showReference && (
-            <p style={{ textAlign: "center", color: "#ef4444", fontSize: 13, marginBottom: 8, fontWeight: 600 }}>
-              Select a gender to display Fenton reference curves.
-            </p>
-          )}
-          <Line data={data} options={options} plugins={[fentonBackgroundPlugin]} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <PdfButton wrapperRef={chartWrapperRef} filename={pdfFilename} />
+          </div>
+          <div ref={chartWrapperRef} style={{ minHeight: 920, backgroundColor: "#fff" }}>
+            {!showReference && (
+              <p style={{ textAlign: "center", color: "#ef4444", fontSize: 13, marginBottom: 8, fontWeight: 600 }}>
+                Select a gender to display Fenton reference curves.
+              </p>
+            )}
+            <Line data={data} options={options} plugins={[fentonBackgroundPlugin]} />
+          </div>
         </div>
       </div>
     );
@@ -396,13 +509,18 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
 
   // No sidebar — original layout
   return (
-    <div style={{ width: "100%", minHeight: 920 }}>
-      {!showReference && (
-        <p style={{ textAlign: "center", color: "#ef4444", fontSize: 13, marginBottom: 8, fontWeight: 600 }}>
-          Select a gender to display Fenton reference curves.
-        </p>
-      )}
-      <Line data={data} options={options} plugins={[fentonBackgroundPlugin]} />
+    <div style={{ width: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+        <PdfButton wrapperRef={chartWrapperRef} filename={pdfFilename} />
+      </div>
+      <div ref={chartWrapperRef} style={{ minHeight: 920, backgroundColor: "#fff" }}>
+        {!showReference && (
+          <p style={{ textAlign: "center", color: "#ef4444", fontSize: 13, marginBottom: 8, fontWeight: 600 }}>
+            Select a gender to display Fenton reference curves.
+          </p>
+        )}
+        <Line data={data} options={options} plugins={[fentonBackgroundPlugin]} />
+      </div>
     </div>
   );
 }

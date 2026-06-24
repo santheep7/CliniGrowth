@@ -27,6 +27,63 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler, Title);
 
+// ─── PDF helpers ──────────────────────────────────────────────────────────────
+async function downloadChartAsPdf(wrapperEl: HTMLElement, filename: string) {
+  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+    import("jspdf"),
+    import("html2canvas"),
+  ]);
+  const canvas = await html2canvas(wrapperEl, {
+    scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
+  });
+  const imgData = canvas.toDataURL("image/png");
+  const imgW = canvas.width, imgH = canvas.height;
+  const orientation = imgW > imgH ? "landscape" : "portrait";
+  const pdf = new jsPDF({ orientation, unit: "px", format: [imgW / 2, imgH / 2] });
+  pdf.addImage(imgData, "PNG", 0, 0, imgW / 2, imgH / 2);
+  pdf.save(filename);
+}
+
+if (typeof document !== "undefined" && !document.getElementById("who-pdf-spin")) {
+  const st = document.createElement("style");
+  st.id = "who-pdf-spin";
+  st.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
+  document.head.appendChild(st);
+}
+
+function PdfButton({ wrapperRef, filename }: { wrapperRef: React.RefObject<HTMLDivElement | null>; filename: string }) {
+  const [loading, setLoading] = React.useState(false);
+  async function handleClick() {
+    if (!wrapperRef.current || loading) return;
+    setLoading(true);
+    try { await downloadChartAsPdf(wrapperRef.current, filename); }
+    catch (err) { console.error("PDF export failed:", err); }
+    finally { setLoading(false); }
+  }
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      style={{
+        background: "none", border: "none", padding: 0,
+        color: loading ? "#94a3b8" : "#0f172a",
+        fontSize: 13, fontWeight: 700,
+        textDecoration: "underline", textUnderlineOffset: 3,
+        cursor: loading ? "not-allowed" : "pointer",
+        letterSpacing: "0.04em",
+        display: "inline-flex", alignItems: "center", gap: 5,
+      }}
+    >
+      {loading ? (
+        <>
+          <span style={{ display: "inline-block", width: 11, height: 11, border: "2px solid #94a3b8", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+          Generating…
+        </>
+      ) : "GET PDF"}
+    </button>
+  );
+}
+
 type Metric = "height" | "weight" | "headCirc";
 type GenderView = "both" | "male" | "female";
 type Gender = "male" | "female" | "";
@@ -43,6 +100,13 @@ interface PatientPoint {
 interface WHOChartMiniProps {
   gender: Gender;
   patientData: PatientPoint[];
+  /**
+   * Full, unfiltered set of visits across both Fenton (<40w) and WHO (>=40w)
+   * charts. Used only by the Historical Audit Logs Summary table below, so the
+   * table always lists every visit regardless of which points were sliced out
+   * for plotting on this chart. Falls back to `patientData` if not provided.
+   */
+  allPatientData?: PatientPoint[];
   height?: number;
 }
 
@@ -237,6 +301,9 @@ function SingleMetricChart({
   metric: Metric;
   height: number;
 }) {
+  const chartWrapperRef = React.useRef<HTMLDivElement>(null);
+  const metricLabel = metric === "height" ? "length" : metric === "weight" ? "weight" : "head-circ";
+  const pdfFilename = `who-${metricLabel}-${genderView}.pdf`;
   const unitLabel     = metric === "weight" ? "kg" : "cm";
   const yStep         = metric === "weight" ? 1 : 5;
   const yMinResolved  = metric === "weight" ? 2 : metric === "height" ? 35 : 25;
@@ -349,8 +416,13 @@ function SingleMetricChart({
   }), [axisColor, xMax, yMinResolved, maxY, yStep, unitLabel]);
 
   return (
-    <div style={{ width: "100%", height, position: "relative" }}>
-      <Line data={chartData} options={options} plugins={[percentileLabelsPlugin]} />
+    <div style={{ width: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+        <PdfButton wrapperRef={chartWrapperRef} filename={pdfFilename} />
+      </div>
+      <div ref={chartWrapperRef} style={{ width: "100%", height, position: "relative", backgroundColor: "#fff" }}>
+        <Line data={chartData} options={options} plugins={[percentileLabelsPlugin]} />
+      </div>
     </div>
   );
 }
@@ -393,6 +465,50 @@ const styles = {
   activeMetric:   { backgroundColor: "#0f172a", borderColor: "#0f172a", color: "#fff" },
   row:            { display: "flex", gap: 16, width: "100%" },
   rowCenter:      { display: "flex", justifyContent: "center", width: "100%" },
+  tableCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: "16px",
+    padding: "24px",
+    marginTop: "20px",
+    boxShadow: "0 4px 6px -1px rgba(0,0,0,0.03), 0 2px 4px -2px rgba(0,0,0,0.03)",
+  },
+  chartHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "20px",
+  },
+  chartTitle: {
+    fontSize: "16px",
+    fontWeight: 700,
+    margin: 0,
+    color: "#1e293b",
+  },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse" as const,
+    textAlign: "left" as const,
+    fontSize: "13px",
+  },
+  thRow: {
+    borderBottom: "2px solid #cbd5e1",
+  },
+  th: {
+    padding: "12px 8px",
+    fontWeight: 700,
+    color: "#475569",
+  },
+  tr: {
+    borderBottom: "1px solid #f1f5f9",
+  },
+  td: {
+    padding: "12px 8px",
+    color: "#334155",
+  },
+  empty: {
+    color: "#94a3b8",
+    fontStyle: "italic" as const,
+  },
 };
 
 const GENDER_OPTIONS: { key: GenderView; label: string }[] = [
@@ -408,11 +524,15 @@ const METRIC_OPTIONS = [
   { key: "headCirc" as MetricFilter, label: "Head Circ." },
 ] as const;
 
-export default function WHOChartMini({ gender, patientData, height = 420 }: WHOChartMiniProps) {
+export default function WHOChartMini({ gender, patientData, allPatientData, height = 420 }: WHOChartMiniProps) {
   const [metricFilter, setMetricFilter] = useState<MetricFilter>("all");
   const [viewGender, setViewGender] = useState<GenderView>(
     gender === "female" ? "female" : gender === "male" ? "male" : "both"
   );
+
+  // Audit table always shows every visit (both Fenton + WHO ranges), even
+  // though the charts above only plot the points relevant to this view.
+  const auditData = allPatientData ?? patientData;
 
   const axisColor = viewGender === "female" ? "#db2777" : "#2563eb";
 
@@ -502,6 +622,53 @@ export default function WHOChartMini({ gender, patientData, height = 420 }: WHOC
           {heightChart || weightChart || headCircChart}
         </div>
       )}
+
+      {/* Historical Audit Table */}
+      <div style={styles.tableCard}>
+        <div style={styles.chartHeader}>
+          <h3 style={styles.chartTitle}>Historical Audit Logs Summary</h3>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.table}>
+            <thead>
+              <tr style={styles.thRow}>
+                <th style={styles.th}># Entry</th>
+                <th style={styles.th}>Age / Date</th>
+                <th style={styles.th}>Weight</th>
+                <th style={styles.th}>Length / Height</th>
+                <th style={styles.th}>Head Circumference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditData.length === 0 ? (
+                <tr style={styles.tr}>
+                  <td style={{ ...styles.td, ...styles.empty }} colSpan={5}>
+                    No entries recorded yet.
+                  </td>
+                </tr>
+              ) : (
+                [...auditData]
+                  .sort((a, b) => a.week - b.week)
+                  .map((p, i) => (
+                    <tr key={i} style={styles.tr}>
+                      <td style={styles.td}><strong>{i + 1}</strong></td>
+                      <td style={styles.td}>{p.label ?? formatWeekLabel(p.week)}</td>
+                      <td style={styles.td}>
+                        {p.weight != null ? `${p.weight.toFixed(2)} kg` : <span style={styles.empty}>—</span>}
+                      </td>
+                      <td style={styles.td}>
+                        {p.height != null ? `${p.height.toFixed(1)} cm` : <span style={styles.empty}>—</span>}
+                      </td>
+                      <td style={styles.td}>
+                        {p.headCirc != null ? `${p.headCirc.toFixed(1)} cm` : <span style={styles.empty}>—</span>}
+                      </td>
+                    </tr>
+                  ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

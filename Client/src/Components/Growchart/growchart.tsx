@@ -232,7 +232,7 @@ export default function GrowChart() {
   const [newVisitId, setNewVisitId] = useState<string | null>(null);
   const [formCollapsed, setFormCollapsed] = useState(false);
 
-  const termWeek: number = (homeForm as any).termWeek ?? 40;
+  const termWeek: number = (homeForm as any).termWeek ?? 50;
   function setTermWeek(v: number) {
     setHomeForm(prev => ({ ...prev, termWeek: v } as any));
   }
@@ -355,7 +355,7 @@ export default function GrowChart() {
       patientName: "", dob: "", gender: "", gaAtBirth: "",
       visits: [{ id: newId(), date: "", height: "", weight: "", headCirc: "" }],
       plotted: false,
-      termWeek: 40,
+      termWeek: 50,
     } as any);
     setChartData([]);
     setVisitErrors({});
@@ -466,7 +466,7 @@ export default function GrowChart() {
                 </div>
 
                 <div style={s.field}>
-                  <label style={s.label}>Show Fenton up to week</label>
+                  <label style={s.label}>Show Fenton up to week (default 50)</label>
                   <input style={s.input} type="number" value={termWeek}
                     onChange={e => setTermWeek(Number(e.target.value))}
                   />
@@ -537,14 +537,14 @@ export default function GrowChart() {
                     Fenton Preterm Growth Chart – {gender === "male" ? "Boys" : "Girls"}
                   </h3>
 
-                  <h4 style={{ margin: "16px 0 8px" }}>Fenton (≤ {splitWeekClamped}w)</h4>
+                  <h4 style={{ margin: "16px 0 8px" }}>Fenton (&le; {splitWeekClamped}w CGA)</h4>
                   <FentonChart gender={gender} patientData={fentonPts} splitWeek={splitWeekClamped} />
 
-                  <h4 style={{ margin: "24px 0 8px" }}>WHO after {splitWeekClamped}w</h4>
+                  <h4 style={{ margin: "24px 0 8px" }}>WHO (after {splitWeekClamped}w CGA)</h4>
 
                   {/* ── Single WHOChartMini renders all metrics with ONE shared toggle bar ── */}
                   {whoPts.length > 0 && (
-                    <WHOChartMini gender={gender} patientData={whoPts} />
+                    <WHOChartMini gender={gender} patientData={whoPts} allPatientData={patientPts} />
                   )}
                 </>
               );
