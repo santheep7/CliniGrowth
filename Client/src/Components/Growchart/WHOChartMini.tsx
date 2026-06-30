@@ -118,6 +118,155 @@ function PdfButton({ wrapperRef, filename, heading }: { wrapperRef: React.RefObj
   );
 }
 
+function formatDobDisplay(dob?: string) {
+  if (!dob) return "";
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return dob;
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+// Builds the audit table as a real, native PDF (text + lines), rather than a
+// screenshot, since this is structured tabular data — not a chart canvas.
+// Patient details are drawn as a header block before the table itself.
+async function downloadAuditPdf(
+  filename: string,
+  auditRows: PatientPoint[],
+  patientName?: string,
+  dob?: string,
+  gaAtBirth?: string
+) {
+  const { default: jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const marginX = 40;
+  const contentW = pageW - marginX * 2;
+  let y = 50;
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(16);
+  pdf.setTextColor("#0f172a");
+  pdf.text("Historical Audit Logs Summary", marginX, y);
+  y += 26;
+
+  // ── Patient details header ──────────────────────────────────────────────
+  const details: string[] = [];
+  if (patientName) details.push(`Patient: ${patientName}`);
+  if (dob) details.push(`DOB: ${formatDobDisplay(dob)}`);
+  if (gaAtBirth) details.push(`GA at birth: ${gaAtBirth}w`);
+  if (details.length) {
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(11);
+    pdf.setTextColor("#334155");
+    details.forEach((line) => { pdf.text(line, marginX, y); y += 16; });
+    y += 8;
+  }
+
+  pdf.setDrawColor("#cbd5e1");
+  pdf.line(marginX, y, pageW - marginX, y);
+  y += 22;
+
+  // ── Column grid: explicit widths that sum exactly to contentW, so the
+  // table fills edge-to-edge with no gaps or overlap ─────────────────────
+  const colWidths = [55, 130, 90, 105, contentW - (55 + 130 + 90 + 105)];
+  const colLabels = ["# Entry", "Age / Date", "Weight", "Length / Height", "Head Circumference"];
+  const cellPad = 6;
+  const colX: number[] = [];
+  colWidths.reduce((acc, w, i) => { colX[i] = acc; return acc + w; }, marginX);
+
+  const drawTableHeader = () => {
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(10);
+    pdf.setTextColor("#475569");
+    colLabels.forEach((label, i) => pdf.text(label, colX[i] + cellPad, y));
+    y += 8;
+    pdf.setDrawColor("#94a3b8");
+    pdf.setLineWidth(1.2);
+    pdf.line(marginX, y, marginX + contentW, y);
+    pdf.setLineWidth(0.6);
+    y += 18;
+  };
+  drawTableHeader();
+
+  // ── Rows ─────────────────────────────────────────────────────────────────
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.setTextColor("#334155");
+  const sorted = [...auditRows].sort((a, b) => a.week - b.week);
+  const rowH = 22;
+
+  if (sorted.length === 0) {
+    pdf.setTextColor("#94a3b8");
+    pdf.text("No entries recorded yet.", colX[0] + cellPad, y);
+  } else {
+    sorted.forEach((p, i) => {
+      if (y > pageH - 60) {
+        pdf.addPage();
+        y = 50;
+        drawTableHeader();
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
+        pdf.setTextColor("#334155");
+      }
+      const row = [
+        String(i + 1),
+        p.label ?? formatWeekLabel(p.week),
+        p.weight != null ? `${p.weight.toFixed(2)} kg` : "\u2014",
+        p.height != null ? `${p.height.toFixed(1)} cm` : "\u2014",
+        p.headCirc != null ? `${p.headCirc.toFixed(1)} cm` : "\u2014",
+      ];
+      row.forEach((text, idx) => pdf.text(text, colX[idx] + cellPad, y));
+      // Row separator, matching the on-screen table's thin row dividers
+      pdf.setDrawColor("#e2e8f0");
+      pdf.line(marginX, y + 7, marginX + contentW, y + 7);
+      y += rowH;
+    });
+  }
+
+  pdf.save(filename);
+}
+
+function AuditPdfButton({
+  auditRows, filename, patientName, dob, gaAtBirth,
+}: {
+  auditRows: PatientPoint[];
+  filename: string;
+  patientName?: string;
+  dob?: string;
+  gaAtBirth?: string;
+}) {
+  const [loading, setLoading] = React.useState(false);
+  async function handleClick() {
+    if (loading) return;
+    setLoading(true);
+    try { await downloadAuditPdf(filename, auditRows, patientName, dob, gaAtBirth); }
+    catch (err) { console.error("Audit PDF export failed:", err); }
+    finally { setLoading(false); }
+  }
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      style={{
+        background: "none", border: "none", padding: 0,
+        color: loading ? "#94a3b8" : "#0f172a",
+        fontSize: 13, fontWeight: 700,
+        textDecoration: "underline", textUnderlineOffset: 3,
+        cursor: loading ? "not-allowed" : "pointer",
+        letterSpacing: "0.04em",
+        display: "inline-flex", alignItems: "center", gap: 5,
+      }}
+    >
+      {loading ? (
+        <>
+          <span style={{ display: "inline-block", width: 11, height: 11, border: "2px solid #94a3b8", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+          Generating…
+        </>
+      ) : "GET PDF"}
+    </button>
+  );
+}
+
 type Metric = "height" | "weight" | "headCirc";
 type GenderView = "both" | "male" | "female";
 type Gender = "male" | "female" | "";
@@ -142,6 +291,10 @@ interface WHOChartMiniProps {
    */
   allPatientData?: PatientPoint[];
   height?: number;
+  /** Patient identity, shown above the audit table and included in its PDF export. */
+  patientName?: string;
+  dob?: string;
+  gaAtBirth?: string;
 }
 
 function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
@@ -515,6 +668,18 @@ const styles = {
     alignItems: "center",
     marginBottom: "20px",
   },
+  patientDetails: {
+    display: "flex",
+    gap: "20px",
+    flexWrap: "wrap" as const,
+    fontSize: "13px",
+    color: "#334155",
+    backgroundColor: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: "8px",
+    padding: "10px 14px",
+    marginBottom: "16px",
+  },
   chartTitle: {
     fontSize: "16px",
     fontWeight: 700,
@@ -561,7 +726,7 @@ const METRIC_OPTIONS = [
   { key: "headCirc" as MetricFilter, label: "Head Circ." },
 ] as const;
 
-export default function WHOChartMini({ gender, patientData, allPatientData, height = 420 }: WHOChartMiniProps) {
+export default function WHOChartMini({ gender, patientData, allPatientData, height = 420, patientName, dob, gaAtBirth }: WHOChartMiniProps) {
   const [metricFilter, setMetricFilter] = useState<MetricFilter>("all");
   const [viewGender, setViewGender] = useState<GenderView>(
     gender === "female" ? "female" : gender === "male" ? "male" : "both"
@@ -664,7 +829,23 @@ export default function WHOChartMini({ gender, patientData, allPatientData, heig
       <div style={styles.tableCard}>
         <div style={styles.chartHeader}>
           <h3 style={styles.chartTitle}>Historical Audit Logs Summary</h3>
+          <AuditPdfButton
+            auditRows={auditData}
+            filename={`audit-history-${(patientName || "patient").toLowerCase().replace(/\s+/g, "-")}.pdf`}
+            patientName={patientName}
+            dob={dob}
+            gaAtBirth={gaAtBirth}
+          />
         </div>
+
+        {(patientName || dob || gaAtBirth) && (
+          <div style={styles.patientDetails}>
+            {patientName && <span><strong>Patient:</strong> {patientName}</span>}
+            {dob && <span><strong>DOB:</strong> {formatDobDisplay(dob)}</span>}
+            {gaAtBirth && <span><strong>GA at birth:</strong> {gaAtBirth}w</span>}
+          </div>
+        )}
+
         <div style={{ overflowX: "auto" }}>
           <table style={styles.table}>
             <thead>

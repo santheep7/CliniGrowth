@@ -700,7 +700,14 @@ export default function GrowChart() {
 
                   {/* ── Single WHOChartMini renders all metrics with ONE shared toggle bar ── */}
                   {whoPts.length > 0 && (
-                    <WHOChartMini gender={gender} patientData={whoPts} allPatientData={patientPts} />
+                    <WHOChartMini
+                      gender={gender}
+                      patientData={whoPts}
+                      allPatientData={patientPts}
+                      patientName={patientName}
+                      dob={dob}
+                      gaAtBirth={gaAtBirth}
+                    />
                   )}
                 </>
               );

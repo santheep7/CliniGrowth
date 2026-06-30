@@ -265,7 +265,7 @@ const fentonBackgroundPlugin = {
 
     const PERCENTILE_LABELS = ["3", "15", "50", "85", "97"];
     const SERIES_CONFIG = [
-      { prefix: "Length", nameAtX: 30, percAtX: 47 },
+      { prefix: "Length", nameAtX: 30, percAtX: 42 },
       { prefix: "Head Circumference", nameAtX: 45, percAtX: 47 },
       { prefix: "Weight", nameAtX: 26, percAtX: 43 },
     ];
@@ -294,19 +294,41 @@ const fentonBackgroundPlugin = {
       if (!PATIENT_DATASET_LABELS.includes(ds.label)) return;
       const meta = chart.getDatasetMeta(i);
       if (!meta?.data?.length) return;
-      meta.data.forEach((element: any) => {
+      const isWeight = ds.label?.toLowerCase().includes("weight");
+      const seriesColor = ds.pointBackgroundColor ?? ds.backgroundColor ?? "#111827";
+      meta.data.forEach((element: any, idx: number) => {
         if (!element || element.x == null || element.y == null) return;
         const r = ds.pointRadius ?? 8;
         const bw = ds.pointBorderWidth ?? 2.5;
         ctx.save();
         ctx.beginPath();
         ctx.arc(element.x, element.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = ds.pointBackgroundColor ?? ds.backgroundColor ?? "#111827";
+        ctx.fillStyle = seriesColor;
         ctx.fill();
         ctx.lineWidth = bw;
         ctx.strokeStyle = ds.pointBorderColor ?? "#fff";
         ctx.stroke();
         ctx.restore();
+
+        // ── Value label, drawn right on the point/line itself ────────────────
+        const raw = ds.data[idx];
+        const val = raw?.yOriginal;
+        if (typeof val === "number") {
+          const text = `${val.toFixed(1)} ${isWeight ? "kg" : "cm"}`;
+          drawOnLineLabel(ctx, text, element.x, element.y, 0,
+            "bold 11px system-ui, sans-serif", seriesColor, -(r + 12));
+
+          // Metric name drawn once per series, only on the first point, so it
+          // identifies the line without repeating on every dot.
+          if (idx === 0) {
+            const metricName = ds.label === "Patient Head Circumference" ? "Head Circ."
+              : ds.label === "Patient Length" ? "Length"
+              : ds.label === "Patient Weight" ? "Weight"
+              : ds.label;
+            drawOnLineLabel(ctx, metricName, element.x, element.y, 0,
+              "bold 11px system-ui, sans-serif", seriesColor, -(r + 28));
+          }
+        }
       });
     });
 
