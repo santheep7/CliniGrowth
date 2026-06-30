@@ -298,7 +298,7 @@ function VisitCard({ v, idx, isNew, canRemove, dob, gaAtBirth, errors, onRemove,
             />
           </div>
           <div style={s.field}>
-            <label style={s.label}>Head Circ. (cm)</label>
+            <label style={s.label}>Head Circ.(cm)</label>
             {errors?.headCirc && <span style={s.errorText}>{errors.headCirc}</span>}
             <input
               ref={headCircRef}

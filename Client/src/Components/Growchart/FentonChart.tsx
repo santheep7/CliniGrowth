@@ -1,8 +1,7 @@
-import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { useMemo, useState, useRef } from "react";
 import CollapsibleSidebar from "./CollapsibleSidebar";
 
 import { Line } from "react-chartjs-2";
-import { gsap } from "gsap";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -48,52 +47,90 @@ interface FentonChartProps {
 type ExtendedDataset = ChartDataset<"line"> & { yAxisID?: string };
 
 const X_MIN = 22;
+
+// ── Y-axis calibration ──────────────────────────────────────────────────────
+// Measured directly off the official 2025 Fenton PDF (5100x6600px render):
+// the entire vertical grid is ONE uniform mesh, ~62.3px per minor gridline,
+// and that single minor gridline happens to equal exactly 1cm on the
+// centimeters scale AND exactly 0.1kg on the weight scale (they coincide
+// pixel-for-pixel). So if we define our chart's Y-axis in "minor grid units"
+// (0 to 90, matching the 90 minor gridlines on the printed chart), both
+// physical scales become trivial linear functions with no fudge factors:
+//   cm = Y - 30        (cm axis printed range: 15 -> Y45, 60 -> Y90)
+//   kg = Y / 10         (weight axis printed range: 0 -> Y0, 6.5 -> Y65)
+// This also reproduces the real chart's behavior where the weight curve
+// visually overlaps the same vertical space as the lower portion of the
+// length/head-circumference curves (it is NOT a non-overlapping split chart).
 const Y_MIN = 0;
-const Y_MAX = 60;
-const WEIGHT_BAND_MAX = 18;
-const WEIGHT_RAW_MAX = 10;
-const CM_RAW_MIN = 15;
-const CM_RAW_MAX = 85;
+const Y_MAX = 90; // top of printed chart = cm 60
+
+const CM_RAW_MIN = 15;   // lowest cm gridline printed on the official chart
+const CM_RAW_MAX = 60;   // top of the official chart
+const WEIGHT_RAW_MAX = 6.5; // highest weight gridline printed (right axis ceiling)
+
 const REF_WEEKS = [22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50] as const;
 const PERCENTILES = ["p3", "p15", "p50", "p85", "p97"] as const;
 
-// Patient dataset indices (always last 3 before rightAxisHelper)
 const PATIENT_DATASET_LABELS = ["Patient Length", "Patient Head Circumference", "Patient Weight"];
 
 function mapWeightValue(value: number) {
-  return (value / WEIGHT_RAW_MAX) * WEIGHT_BAND_MAX;
+  return value * 10; // kg -> minor-grid-units
 }
 function mapCmValue(value: number) {
-  return WEIGHT_BAND_MAX + ((value - CM_RAW_MIN) / (CM_RAW_MAX - CM_RAW_MIN)) * (Y_MAX - WEIGHT_BAND_MAX);
+  return value + 30; // cm -> minor-grid-units
 }
 function mapValueToChart(label: string, value: number) {
   return label.toLowerCase().includes("weight") ? mapWeightValue(value) : mapCmValue(value);
 }
 
-function buildYTicks(weightMin: number, weightMax: number, cmMin: number, cmMax: number): number[] {
-  const wStep = 0.5;
-  const wLo = Math.max(0, Math.floor(weightMin / wStep - 1) * wStep);
-  const wHi = Math.min(10, Math.ceil(weightMax / wStep + 1) * wStep);
-  const weightTicks: number[] = [];
-  for (let v = wLo; v <= wHi + 0.001; v = Math.round((v + wStep) * 100) / 100) weightTicks.push(mapWeightValue(v));
+interface AxisTick { value: number; label: string; }
 
-  const cmStep = 5;
-  const cmLo = Math.max(15, Math.floor(cmMin / cmStep - 1) * cmStep);
-  const cmHi = Math.min(85, Math.ceil(cmMax / cmStep + 1) * cmStep);
-  const cmTicks: number[] = [];
-  for (let v = cmLo; v <= cmHi + 0.001; v += cmStep) cmTicks.push(mapCmValue(v));
+// Official printed label sets (measured/OCR-confirmed from the PDF):
+//   LEFT axis:  cm 60,55,...,15  then a blank gap then  kg 4,3.5,...,0
+//   RIGHT axis: cm 60,55,...,40  then a blank gap then  kg 6.5,6,...,0
+// (Both axes share the exact same gridline mesh - they just choose to label
+// different subsets of it, which is why the weight and cm bands overlap.)
+function buildAxisTicks(cmLabelFloor: number, weightLabelCeil: number, extendCmTo: number, extendWeightTo: number): AxisTick[] {
+  const raw: AxisTick[] = [];
+  // cm labels, descending from the top of the chart down to CM_RAW_MIN (or further if patient data requires it)
+  const cmTop = Math.max(CM_RAW_MAX, Math.ceil(extendCmTo / 5) * 5);
+  for (let v = cmTop; v >= CM_RAW_MIN; v -= 5) {
+    raw.push({ value: mapCmValue(v), label: v >= cmLabelFloor ? `${v}` : "" });
+  }
+  // weight labels, ascending from 0 up to the printed ceiling (or further if patient data requires it)
+  const weightTop = Math.max(WEIGHT_RAW_MAX, Math.ceil(extendWeightTo * 2) / 2);
+  for (let v = 0; v <= weightTop + 0.001; v += 0.5) {
+    raw.push({ value: mapWeightValue(v), label: v <= weightLabelCeil + 0.001 ? v.toFixed(1) : "" });
+  }
+  // The cm and weight scales share one physical gridline mesh, so some ticks land on
+  // the exact same Y-value (e.g. cm 15 === kg 4.5 === Y45, cm 20 === kg 5.0 === Y50, etc).
+  // Without de-duping, whichever tick happens to be pushed last (here, the weight tick,
+  // which is intentionally blank past weightLabelCeil) silently overwrites a real cm
+  // label when both end up at the same key in a Map. Always keep the non-empty label.
+  const merged = new Map<number, string>();
+  for (const t of raw) {
+    const existing = merged.get(t.value);
+    if (existing === undefined || existing === "") merged.set(t.value, t.label);
+  }
+  return Array.from(merged, ([value, label]) => ({ value, label })).sort((a, b) => a.value - b.value);
+}
 
-  return [...weightTicks, ...cmTicks];
+function buildYTicks(maxCmNeeded: number, maxWeightNeeded: number): {
+  left: AxisTick[];
+  right: AxisTick[];
+} {
+  return {
+    left: buildAxisTicks(15, 4, maxCmNeeded, maxWeightNeeded),
+    right: buildAxisTicks(40, 6.5, maxCmNeeded, maxWeightNeeded),
+  };
 }
 
 function formatTick(value: number) {
-  if (value <= WEIGHT_BAND_MAX) {
-    let raw = (value / WEIGHT_BAND_MAX) * WEIGHT_RAW_MAX;
-    raw = Math.round(raw * 2) / 2;
-    return raw.toFixed(1);
-  }
-  const raw = CM_RAW_MIN + ((value - WEIGHT_BAND_MAX) / (Y_MAX - WEIGHT_BAND_MAX)) * (CM_RAW_MAX - CM_RAW_MIN);
-  return Math.round(raw).toString();
+  // Fallback formatter for any procedurally-extended ticks beyond the
+  // officially printed range. Y >= 45 sits in the cm band, below that
+  // it's the weight band (matches the real chart's overlap boundary).
+  if (value >= 45) return Math.round(value - 30).toString();
+  return (value / 10).toFixed(1);
 }
 
 const COLORS = { reference: "#6b7280", patient: "#111827" };
@@ -141,13 +178,11 @@ function buildPatientDataset(label: string, points: Array<{ x: number; y: number
     borderWidth: 2.5,
     borderDash: dash ?? [],
     tension: 0.35,
-    // ── Bolder points ──────────────────────────────────────────
     pointRadius: 8,
     pointHoverRadius: 11,
     pointBorderWidth: 2.5,
     pointBorderColor: "#fff",
     pointBackgroundColor: COLORS.patient,
-    // ── Draw order: high number = rendered on top ───────────────
     order: 0,
     spanGaps: true,
     fill: false,
@@ -196,30 +231,37 @@ function drawOnLineLabel(ctx: CanvasRenderingContext2D, text: string, px: number
 // ─── Plugin: background bands + axis labels + patient points on top ───────────
 const fentonBackgroundPlugin = {
   id: "fentonBackground",
-  afterDraw(chart: any) {
+  beforeDatasetsDraw(chart: any) {
     const { ctx, chartArea, scales } = chart;
     if (!ctx) return;
     const { left, right, top, bottom } = chartArea;
+
     ctx.save();
-    const splitPixel = scales.y.getPixelForValue(WEIGHT_BAND_MAX);
+    ctx.strokeStyle = "#eef1f4";
+    ctx.lineWidth = 0.5;
+    // Single uniform mesh: on the real chart, 1 minor gridline = 1cm = 0.1kg,
+    // so cm and weight share the exact same physical gridlines (no separate
+    // bands, no separator). Major lines every 5 units (5cm / 0.5kg), matching print.
+    for (let v = Y_MIN; v <= Y_MAX + 0.001; v += 1) {
+      const y = scales.y.getPixelForValue(v);
+      ctx.beginPath();
+      ctx.moveTo(left, y);
+      ctx.lineTo(right, y);
+      ctx.stroke();
+    }
+    ctx.restore();
 
-    ctx.fillStyle = "rgba(248,250,252,0.55)";
-    ctx.fillRect(left, splitPixel, right - left, bottom - splitPixel);
-    ctx.fillStyle = "rgba(250,251,253,0.35)";
-    ctx.fillRect(left, top, right - left, splitPixel - top);
+    const weightLabelPixel = scales.y.getPixelForValue(20); // mid of weight-only zone (Y 0-45)
+    const cmLabelPixel = scales.y.getPixelForValue(77.5);   // mid of cm-only zone (Y 65-90)
 
-    ctx.save(); ctx.strokeStyle = "#475569"; ctx.lineWidth = 2.5; ctx.setLineDash([]);
-    ctx.beginPath(); ctx.moveTo(right, top); ctx.lineTo(right, bottom); ctx.stroke(); ctx.restore();
-
-    const weightPixel0 = scales.y.getPixelForValue(0);
-    const midWeightPixel = (weightPixel0 + splitPixel) / 2;
-    const cmPixel60 = scales.y.getPixelForValue(60);
-    const midCmPixel = (splitPixel + cmPixel60) / 2;
-    ctx.save(); ctx.font = "bold 11px system-ui, sans-serif"; ctx.fillStyle = "#0f172a";
-    [[left - 40, midWeightPixel, "Weight (kilograms)"], [left - 40, midCmPixel, "Centimeters"],
-     [right + 50, midWeightPixel, "Weight (kilograms)"], [right + 50, midCmPixel, "Centimeters"]].forEach(([tx, ty, txt]) => {
+    ctx.save();
+    ctx.font = "bold 11px system-ui, sans-serif";
+    ctx.fillStyle = "#0f172a";
+    [[left - 40, weightLabelPixel, "Weight (kilograms)"], [left - 40, cmLabelPixel, "Centimeters"],
+     [right + 50, weightLabelPixel, "Weight (kilograms)"], [right + 50, cmLabelPixel, "Centimeters"]].forEach(([tx, ty, txt]) => {
       ctx.save(); ctx.translate(tx as number, ty as number); ctx.rotate(-Math.PI / 2); ctx.textAlign = "center"; ctx.fillText(txt as string, 0, 0); ctx.restore();
-    }); ctx.restore();
+    });
+    ctx.restore();
 
     const PERCENTILE_LABELS = ["3", "15", "50", "85", "97"];
     const SERIES_CONFIG = [
@@ -276,14 +318,12 @@ const fentonBackgroundPlugin = {
 async function downloadChartAsPdf(wrapperEl: HTMLElement, filename: string) {
   const { default: jsPDF } = await import("jspdf");
 
-  // Grab the Chart.js canvas directly — already rendered at devicePixelRatio, no re-rasterisation
   const chartCanvas = wrapperEl.querySelector("canvas");
   if (!chartCanvas) return;
 
   const srcW = chartCanvas.width;
   const srcH = chartCanvas.height;
 
-  // Composite onto a white-background offscreen canvas
   const offscreen = document.createElement("canvas");
   offscreen.width  = srcW;
   offscreen.height = srcH;
@@ -294,7 +334,6 @@ async function downloadChartAsPdf(wrapperEl: HTMLElement, filename: string) {
 
   const imgData = offscreen.toDataURL("image/png", 1.0);
 
-  // 1px = 0.75pt at 96dpi — preserves true pixel dimensions in the PDF
   const ptW = srcW * 0.75;
   const ptH = srcH * 0.75;
   const orientation = ptW > ptH ? "landscape" : "portrait";
@@ -349,7 +388,6 @@ function PdfButton({ wrapperRef, filename }: { wrapperRef: React.RefObject<HTMLD
   );
 }
 
-// Inject spinner keyframes once
 if (typeof document !== "undefined" && !document.getElementById("fenton-pdf-spin")) {
   const st = document.createElement("style");
   st.id = "fenton-pdf-spin";
@@ -373,21 +411,19 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
   }, [patientData]);
 
   const yTickValues = useMemo(() => {
-    const wR  = showReference ? (isMale ? FENTON_WEIGHT_BOYS : FENTON_WEIGHT_GIRLS) : [];
     const lR  = showReference ? (isMale ? FENTON_LENGTH_BOYS : FENTON_LENGTH_GIRLS) : [];
     const hcR = showReference ? (isMale ? FENTON_HC_BOYS     : FENTON_HC_GIRLS)     : [];
-    const allWeights: number[] = [...wR.flatMap(p => [p.p3, p.p97])];
+    const wR  = showReference ? (isMale ? FENTON_WEIGHT_BOYS : FENTON_WEIGHT_GIRLS) : [];
     const allCms: number[] = [...lR.flatMap(p => [p.p3, p.p97]), ...hcR.flatMap(p => [p.p3, p.p97])];
+    const allKgs: number[] = [...wR.flatMap(p => [p.p3, p.p97])];
     patientData.forEach(p => {
-      if (p.weight  != null) allWeights.push(p.weight);
       if (p.height  != null) allCms.push(p.height);
       if (p.headCirc != null) allCms.push(p.headCirc);
+      if (p.weight   != null) allKgs.push(p.weight);
     });
     return buildYTicks(
-      allWeights.length ? Math.min(...allWeights) : 0,
-      allWeights.length ? Math.max(...allWeights) : 10,
-      allCms.length ? Math.min(...allCms) : CM_RAW_MIN,
       allCms.length ? Math.max(...allCms) : CM_RAW_MAX,
+      allKgs.length ? Math.max(...allKgs) : WEIGHT_RAW_MAX,
     );
   }, [gender, patientData, showReference, isMale]);
 
@@ -435,7 +471,6 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
       order: 999,
     } as ExtendedDataset;
 
-    // Reference curves get a high order so they render before patient points
     const refSeries = [
       ...buildSeries(lRef, "Length"),
       ...buildSeries(hcRef, "Head Circumference"),
@@ -446,6 +481,9 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
   }, [gender, patientData]);
 
   const data: ChartData<"line"> = useMemo(() => ({ datasets: datasets as ChartDataset<"line">[] }), [datasets]);
+
+  const leftLabelMap = useMemo(() => new Map(yTickValues.left.map(t => [t.value, t.label])), [yTickValues]);
+  const rightLabelMap = useMemo(() => new Map(yTickValues.right.map(t => [t.value, t.label])), [yTickValues]);
 
   const options: ChartOptions<"line"> = useMemo(() => ({
     responsive: true,
@@ -467,27 +505,39 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
     layout: { padding: { left: 70, right: 100, top: 24, bottom: 10 } },
     scales: {
       x: {
-        type: "linear", min: X_MIN, max: xMax,
+        type: "linear", 
+        min: X_MIN, 
+        max: xMax,
+        offset: false, // <-- Fixes the horizontal gap issue
         title: { display: true, text: "Gestational age (weeks)", color: "#475569", font: { size: 12, weight: 600 } },
         ticks: { stepSize: 2, color: "#475569", font: { size: 11 } },
         grid: { color: "#e2e8f0" },
       },
       y: {
         min: Y_MIN, max: Y_MAX, title: { display: false },
-        ticks: { values: yTickValues, autoSkip: false, maxTicksLimit: 50, display: true, color: "#475569", font: { size: 11 }, callback: value => formatTick(Number(value)), padding: 10 },
+        offse:false, 
+        bounds: "ticks",
+        afterBuildTicks: (scale: any) => {
+          scale.ticks = yTickValues.left.map(t => ({ value: t.value }));
+        },
+        ticks: { autoSkip: false, color: "#475569", font: { size: 11 }, callback: value => leftLabelMap.get(Number(value)) ?? formatTick(Number(value)), padding: 10 },
         grid: { color: "#e8ebef", drawBorder: true, borderColor: "#475569", borderWidth: 1 },
       },
       yRight: {
         position: "right", min: Y_MIN, max: Y_MAX, title: { display: false },
-        ticks: { values: yTickValues, autoSkip: false, maxTicksLimit: 50, display: true, color: "#475569", font: { size: 11 }, callback: value => formatTick(Number(value)), padding: 10 },
+         offse:false, 
+        bounds: "ticks",
+        afterBuildTicks: (scale: any) => {
+          scale.ticks = yTickValues.right.map(t => ({ value: t.value }));
+        },
+        ticks: { autoSkip: false, color: "#475569", font: { size: 11 }, callback: value => rightLabelMap.get(Number(value)) ?? formatTick(Number(value)), padding: 10 },
         grid: { drawOnChartArea: false, drawBorder: true, borderColor: "#475569", borderWidth: 1 },
       },
     },
-  }), [yTickValues, xMax]);
+  }), [yTickValues, xMax, leftLabelMap, rightLabelMap]);
 
   const pdfFilename = `fenton-${gender || "chart"}.pdf`;
 
-  // ── Layout: sidebar (optional) + chart ──────────────────────────────────────
   if (sidebarContent) {
     return (
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start", width: "100%" }}>
@@ -512,7 +562,6 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
     );
   }
 
-  // No sidebar — original layout
   return (
     <div style={{ width: "100%" }}>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
