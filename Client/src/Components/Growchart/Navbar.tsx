@@ -9,6 +9,7 @@ export default function Navbar() {
   const links = [
     { path: "/",       label: "Fenton Chart" },
     { path: "/detail", label: "WHO chart" },
+    { path: "/DevelopmentScreen", label: "TDSC Chart" },
   ];
 
   return (
