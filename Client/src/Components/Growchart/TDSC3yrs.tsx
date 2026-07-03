@@ -15,82 +15,56 @@ interface TDSCChartProps {
 }
 
 // ─── Chart constants ────────────────────────────────────────────────────────
-const AGE_MIN = 36;
-const AGE_MAX = 72;
+const AGE_MIN = 1;
+const AGE_MAX = 35;
 const MONTH_WIDTH = 26; // px per month
 const ROW_HEIGHT = 30;
 const BAR_HEIGHT = 15;
-const CHART_LEFT_PAD = 28;
-const LABEL_GAP = 6;
-const RIGHT_EDGE_CUTOFF = 58;
+const CHART_LEFT_PAD = 20; // margin before month 1
+const LABEL_GAP = 6; // gap between bar edge and label text
+const RIGHT_EDGE_CUTOFF = 30; // endMonth beyond which label goes before the bar
 const SLIDER_HEIGHT = 40;
 const HTML2CANVAS_SRC = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
 const JSPDF_SRC = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 
-const parseDateValue = (value?: string | null): Date | null => {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const getVisitAgeInMonths = (visitDate?: string, dob?: string): number | null => {
-  const birth = parseDateValue(dob);
-  const visit = parseDateValue(visitDate);
-  if (!birth || !visit) return null;
-
-  let months = (visit.getFullYear() - birth.getFullYear()) * 12 +
-    (visit.getMonth() - birth.getMonth());
-
-  if (visit.getDate() < birth.getDate()) {
-    months -= 1;
-  }
-
-  return months >= 0 ? months : null;
-};
-
 const TDSC_ITEMS: TDSCItem[] = [
-  { id: 1,  label: "Broad jump (Both legs)",                          startMonth: 36, endMonth: 37 },
-  { id: 2,  label: "Copy circle",                                     startMonth: 36, endMonth: 39 },
-  { id: 3,  label: "Balance one foot one second",                     startMonth: 36, endMonth: 40 },
-  { id: 4,  label: "Answers 2 questions (e.g., Hungry, cold)",        startMonth: 36, endMonth: 43 },
-  { id: 5,  label: "Names one color",                                 startMonth: 36, endMonth: 45 },
-  { id: 6,  label: "Tells use of 2 objects (e.g., pencil, chair)",    startMonth: 36, endMonth: 45 },
-  { id: 7,  label: "Concept of one (Pick '1' from a group)",          startMonth: 36, endMonth: 46 },
-  { id: 8,  label: "Plays near and talk with peers",                  startMonth: 45, endMonth: 50 },
-  { id: 9,  label: "Hops continuously 3 steps",                       startMonth: 45, endMonth: 52 },
-  { id: 10, label: "Draw person with 3 parts",                        startMonth: 47, endMonth: 55 },
-  { id: 11, label: "Writes 3 alphabets (e.g.: A, E, D)",              startMonth: 48, endMonth: 56 },
-  { id: 12, label: "Tells function of 3 body parts",                  startMonth: 49, endMonth: 57 },
-  { id: 13, label: "Paints/shades blank circle",                      startMonth: 50, endMonth: 59 },
-  { id: 14, label: "Define/explain 10 words",                         startMonth: 51, endMonth: 59 },
-  { id: 15, label: "Heel to toe walk 4 consecutive steps",            startMonth: 48, endMonth: 60 },
-  { id: 16, label: "Answers why questions",                           startMonth: 51, endMonth: 60 },
-  { id: 17, label: "Folds paper diagonally twice",                    startMonth: 51, endMonth: 63 },
-  { id: 18, label: "Copy 3 shapes",                                   startMonth: 53, endMonth: 64 },
-  { id: 19, label: "Points to middle",                                startMonth: 52, endMonth: 65 },
-  { id: 20, label: "Picks 5 objects from the group",                  startMonth: 55, endMonth: 66 },
-  { id: 21, label: "Button/unbutton",                                 startMonth: 56, endMonth: 68 },
-  { id: 22, label: "Names days of a week in order",                   startMonth: 57, endMonth: 70 },
-  { id: 23, label: "Uses 5–6 word sentences",                         startMonth: 60, endMonth: 72 },
-  { id: 24, label: "Writes own name",                                 startMonth: 61, endMonth: 72 },
+  { id: 1,  label: "Social smile",                                            startMonth: 1,  endMonth: 2 },
+  { id: 2,  label: "Eyes follow pen/pencil",                                  startMonth: 1,  endMonth: 3 },
+  { id: 3,  label: "Hold head steady",                                        startMonth: 2,  endMonth: 4 },
+  { id: 4,  label: "Rolls from back to stomach",                              startMonth: 3,  endMonth: 6 },
+  { id: 5,  label: "Turns head to sound of bell/rattle",                      startMonth: 4,  endMonth: 7 },
+  { id: 6,  label: "Transfers objects hand to hand",                         startMonth: 5,  endMonth: 9 },
+  { id: 7,  label: "Raises self to sitting position",                        startMonth: 6,  endMonth: 9 },
+  { id: 8,  label: "Standing up by furniture",                               startMonth: 6,  endMonth: 10 },
+  { id: 9,  label: "Fine prehension pellet",                                 startMonth: 7,  endMonth: 10 },
+  { id: 10, label: "Pat a cake",                                             startMonth: 8,  endMonth: 11 },
+  { id: 11, label: "Walks with help",                                        startMonth: 9,  endMonth: 13 },
+  { id: 12, label: "Throws ball",                                            startMonth: 11, endMonth: 16 },
+  { id: 13, label: "Walks alone",                                            startMonth: 12, endMonth: 17 },
+  { id: 14, label: "Says two words",                                         startMonth: 12, endMonth: 18 },
+  { id: 15, label: "Walks backwards",                                        startMonth: 13, endMonth: 19 },
+  { id: 16, label: "Walks upstairs with help",                               startMonth: 15, endMonth: 23 },
+  { id: 17, label: "Points to parts of doll (3 parts)",                      startMonth: 16, endMonth: 23 },
+  { id: 18, label: "Removes garments",                                       startMonth: 18, endMonth: 24 },
+  { id: 19, label: "Uses words for personal needs",                          startMonth: 19, endMonth: 24 },
+  { id: 20, label: "Jumps in place",                                         startMonth: 20, endMonth: 24 },
+  { id: 21, label: "Differentiates big & small",                             startMonth: 20, endMonth: 24 },
+  { id: 22, label: "Points to 7 common objects",                             startMonth: 21, endMonth: 25 },
+  { id: 23, label: "Brush teeth with help",                                  startMonth: 21, endMonth: 25 },
+  { id: 24, label: "Tells gender when asked",                                startMonth: 22, endMonth: 26 },
+  { id: 25, label: "On instruction places objects 'IN', 'ON', & 'UNDER'",    startMonth: 23, endMonth: 27 },
+  { id: 26, label: "Asks simple questions",                                  startMonth: 24, endMonth: 34 },
+  { id: 27, label: "Answers at least half understandable to others",         startMonth: 25, endMonth: 35 },
 ];
 
 // ─── Component ──────────────────────────────────────────────────────────────
-export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCChartProps) {
+export default function TDSC3yrs({ patientName, items = TDSC_ITEMS }: TDSCChartProps) {
   const { patient, setPatient } = useGrowchart();
   const displayName = patientName || patient?.patientName;
 
   // Get visits and existing marks from patient data
   const visits = patient?.visits || [];
-  const tdscMarks: { visitId: string; markedItems?: number[] }[] = patient?.tdscMarks || [];
-
-  // Check if visit age falls in 3-6 range (36-72 months)
-  const visitsInRange = useMemo(() => {
-    return visits.filter(visit => {
-      const ageInMonths = getVisitAgeInMonths(visit.date, patient?.dob);
-      return ageInMonths !== null && ageInMonths >= AGE_MIN && ageInMonths <= AGE_MAX;
-    });
-  }, [visits, patient?.dob]);
+  const tdscMarks = patient?.tdscMarks || [];
 
   const [sessionSavedIds, setSessionSavedIds] = useState<Set<string>>(new Set());
   const savedVisitIds = useMemo(() => {
@@ -98,6 +72,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
     return new Set([...fromContext, ...sessionSavedIds]);
   }, [tdscMarks, sessionSavedIds]);
 
+  // State for editing mode and selected visit
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null);
   const [localMarks, setLocalMarks] = useState<{ [visitId: string]: Set<number> }>(
     () => {
@@ -109,13 +84,12 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
     }
   );
 
+  // Track slider position for each visit
   const [sliderPositions, setSliderPositions] = useState<{ [visitId: string]: number }>(() => {
     const positions: { [visitId: string]: number } = {};
-    visitsInRange.forEach(visit => {
-      const stored = localStorage.getItem(`tdsc-slider-36-${visit.id}`);
-      positions[visit.id] = stored
-        ? parseInt(stored)
-        : getVisitAgeInMonths(visit.date, patient?.dob) ?? AGE_MIN;
+    visits.forEach(visit => {
+      const stored = localStorage.getItem(`tdsc-slider-${visit.id}`);
+      positions[visit.id] = stored ? parseInt(stored) : AGE_MIN;
     });
     return positions;
   });
@@ -124,16 +98,16 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
     setSliderPositions(prev => {
       let changed = false;
       const next = { ...prev };
-      visitsInRange.forEach(visit => {
+      visits.forEach(visit => {
         if (!(visit.id in next)) {
-          const stored = localStorage.getItem(`tdsc-slider-36-${visit.id}`);
-          next[visit.id] = stored ? parseInt(stored) : (getVisitAgeInMonths(visit.date, patient?.dob) ?? AGE_MIN);
+          const stored = localStorage.getItem(`tdsc-slider-${visit.id}`);
+          next[visit.id] = stored ? parseInt(stored) : AGE_MIN;
           changed = true;
         }
       });
       return changed ? next : prev;
     });
-  }, [visitsInRange, patient?.dob]);
+  }, [visits]);
 
   // AUTO-SELECT items when slider moves
   useEffect(() => {
@@ -150,11 +124,13 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
         newMarks[activeVisitId] = new Set();
       }
 
+      // Auto-select all items in the current range
       const newSet = new Set<number>();
       itemsInRange.forEach(item => {
         newSet.add(item.id);
       });
 
+      // Only update if changed
       const oldSet = newMarks[activeVisitId];
       if (newSet.size !== oldSet.size || [...newSet].some(id => !oldSet.has(id))) {
         return {
@@ -166,6 +142,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
     });
   }, [sliderPositions, activeVisitId, items]);
 
+  // Toggle an item as marked for a visit
   const toggleItemMark = (visitId: string, itemId: number) => {
     setLocalMarks(prev => {
       const newMarks = { ...prev };
@@ -183,18 +160,21 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
     });
   };
 
+  // Update slider position for a visit
   const handleSliderChange = (visitId: string, newMonth: number) => {
     setSliderPositions(prev => ({
       ...prev,
       [visitId]: newMonth,
     }));
-    localStorage.setItem(`tdsc-slider-36-${visitId}`, String(newMonth));
+    localStorage.setItem(`tdsc-slider-${visitId}`, String(newMonth));
   };
 
+  // Toast + tick feedback shown briefly after a successful save
   const [showSavedToast, setShowSavedToast] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Save all marks to patient data
   const saveMarks = () => {
     if (!patient || !activeVisitId) return;
     
@@ -208,6 +188,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
       tdscMarks: newTdscMarks,
     });
 
+    // Lock immediately in local session state
     setSessionSavedIds(prev => {
       const next = new Set(prev);
       Object.entries(localMarks).forEach(([visitId, marks]) => {
@@ -217,8 +198,10 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
       return next;
     });
 
+    // Clear active visit to disable dropdown
     setActiveVisitId(null);
 
+    // Success feedback: show toast at top center of page
     setJustSaved(true);
     setShowSavedToast(true);
     if (savedTimeoutRef.current) clearTimeout(savedTimeoutRef.current);
@@ -244,6 +227,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
     [items]
   );
 
+  // ─── Responsive width ───────────────────────────────────────────────────
   const [containerWidth, setContainerWidth] = useState(0);
   useEffect(() => {
     const el = exportRef.current;
@@ -268,6 +252,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
   );
   const chartHeight = orderedItems.length * ROW_HEIGHT;
 
+  // ─── Age-marker slider state ───────────────────────────────────────────
   const [isDragging, setIsDragging] = useState(false);
   const [draggingVisitId, setDraggingVisitId] = useState<string | null>(null);
   const sliderTrackRef = useRef<HTMLDivElement>(null);
@@ -308,10 +293,11 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
     try {
       (e.target as Element).releasePointerCapture(e.pointerId);
     } catch {
-      // no-op
+      // no-op — pointer may already have been released
     }
   };
 
+  // ─── PDF export ─────────────────────────────────────────────────────────
   const exportRef = useRef<HTMLDivElement>(null);
   const scrollWrapperRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -328,6 +314,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
         }
       };
 
+      // Load html2canvas
       if (w.html2canvas) {
         html2canvasLoaded = true;
       } else {
@@ -341,6 +328,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
         document.body.appendChild(script1);
       }
 
+      // Load jsPDF
       if (w.jspdf?.jsPDF) {
         jspdfLoaded = true;
       } else {
@@ -368,9 +356,11 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
     try {
       const { html2canvas, jsPDF } = await ensureLibraries();
       
+      // Temporarily widen the scroll area so the full chart is captured
       sw.style.width = `${trackWidth}px`;
       sw.style.overflowX = "visible";
       
+      // Capture the chart as an image
       const canvas = await html2canvas(exportRef.current, {
         backgroundColor: "#ffffff",
         scale: 2,
@@ -380,7 +370,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
       sw.style.overflowX = prevOverflowX;
 
       const imgData = canvas.toDataURL("image/png");
-      const imgWidth = 210;
+      const imgWidth = 210; // A4 width in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
       const pdf = new jsPDF({
@@ -394,6 +384,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
       let heightLeft = imgHeight;
       let position = 0;
 
+      // Add image to PDF, creating multiple pages if needed
       pdf.addImage(imgData, "PNG", 0, position, pageWidth, imgHeight);
       heightLeft -= pageHeight;
 
@@ -404,9 +395,10 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
         heightLeft -= pageHeight;
       }
 
+      // Generate filename with patient name
       const namePart = displayName ? `-${displayName.trim().replace(/\s+/g, "_")}` : "";
       const timestamp = new Date().toISOString().slice(0, 10);
-      const filename = `TDSC-3-6-chart${namePart}-${timestamp}.pdf`;
+      const filename = `TDSC-0-3-chart${namePart}-${timestamp}.pdf`;
       
       pdf.save(filename);
     } catch (err) {
@@ -419,40 +411,9 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
     }
   };
 
-  // Show message if no visits in range
-  if (visitsInRange.length === 0) {
-    return (
-      <div style={s.container} ref={exportRef}>
-        <div style={s.heroHeader}>
-          <div style={s.headerContent}>
-            <div style={s.headerTitleGroup}>
-              <h1 style={s.mainTitle}>TDSC 3–6 Years</h1>
-              <p style={s.headerSubtitle}>Trivandrum Developmental Screening Chart</p>
-            </div>
-            {displayName && (
-              <div style={s.patientCardCompact}>
-                <span style={s.patientLabel}>Patient</span>
-                <span style={s.patientName}>{displayName}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div style={s.noVisitsMessage}>
-          <p style={s.noVisitsText}>
-            ℹ️ No visits found in the 3–6 years (36–72 months) age range.
-          </p>
-          <p style={s.noVisitsSubtext}>
-            This chart is only available for patients whose visits fall within this age group. Please check the patient's visit dates.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div style={s.container} ref={exportRef}>
-      {/* GLOBAL TOAST NOTIFICATION */}
+      {/* GLOBAL TOAST NOTIFICATION - TOP CENTER */}
       {showSavedToast && (
         <div style={s.globalToast}>
           <span style={s.toastIcon}>✓</span>
@@ -460,11 +421,13 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
         </div>
       )}
 
-      {/* HERO HEADER */}
+      {/* ─── REDESIGNED HEADER SECTION ─────────────────────────────────── */}
+      
+      {/* Hero Header */}
       <div style={s.heroHeader}>
         <div style={s.headerContent}>
           <div style={s.headerTitleGroup}>
-            <h1 style={s.mainTitle}>TDSC 3–6 Years</h1>
+            <h1 style={s.mainTitle}>TDSC 0–3 Years</h1>
             <p style={s.headerSubtitle}>Trivandrum Developmental Screening Chart</p>
           </div>
           {displayName && (
@@ -476,15 +439,15 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
         </div>
       </div>
 
-      {/* QUICK ACTIONS BAR */}
+      {/* Quick Actions Bar */}
       <div style={s.quickActionsBar}>
         <div style={s.actionGroup}>
-          {visitsInRange.length > 0 && (
+          {visits.length > 0 && (
             <div style={s.visitStatusSummary}>
               <div style={s.statusBadge}>
                 <span style={s.statusDot} />
                 <span style={s.statusText}>
-                  {visitsInRange.length} visit{visitsInRange.length !== 1 ? "s" : ""}
+                  {visits.length} visit{visits.length !== 1 ? "s" : ""}
                 </span>
               </div>
               <div style={s.statusBadge}>
@@ -507,8 +470,8 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
         </button>
       </div>
 
-      {/* VISIT SELECTION PANEL */}
-      {visitsInRange.length > 0 && (
+      {/* Visit Selection Panel - Redesigned */}
+      {visits.length > 0 && (
         <div style={s.visitPanelRedesigned}>
           <div style={s.visitPanelHeader}>
             <h3 style={s.visitPanelTitle}>Select Visit to Mark Items</h3>
@@ -528,7 +491,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
                 style={s.visitSelectDropdown}
               >
                 <option value="">-- Choose a visit --</option>
-                {visitsInRange.map((visit) => {
+                {visits.map((visit) => {
                   const visitDate = visit.date
                     ? new Date(visit.date).toLocaleDateString("en-GB", {
                         day: "2-digit",
@@ -581,7 +544,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
         </div>
       )}
 
-      {/* LEGEND */}
+      {/* Legend - Repositioned */}
       <div style={s.legendRedesigned}>
         <div style={s.legendContent}>
           <span style={s.legendItemNew}>
@@ -617,7 +580,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
         </div>
       </div>
 
-      {/* ITEMS AT AGE PANEL */}
+      {/* Items at active visit slider age */}
       {activeVisitId && (
         <div style={s.itemsAtAgePanel}>
           <h4 style={s.itemsAtAgeTitle}>
@@ -671,9 +634,8 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
         </div>
       )}
 
-      {/* CHART */}
+      {/* Chart - Scroll Wrapper */}
       <div style={s.scrollWrapperOuter} ref={scrollWrapperRef}>
-        {/* SLIDER AREA */}
         <div
           ref={sliderTrackRef}
           onClick={handleTrackClick}
@@ -686,6 +648,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
             borderBottom: "2px solid #111827",
           }}
         >
+          {/* Month gridlines */}
           {months.map((m) => (
             <div
               key={m}
@@ -700,6 +663,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
             />
           ))}
 
+          {/* Month labels */}
           {months
             .filter((m) => m % 5 === 0)
             .map((m) => (
@@ -720,8 +684,8 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
               </div>
             ))}
 
-          {/* Slider buttons and labels for each visit */}
-          {visitsInRange.map((visit) => {
+          {/* Slider buttons for each visit */}
+          {visits.map((visit) => {
             const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
             const isActive = activeVisitId === visit.id;
             const isSaved = savedVisitIds.has(visit.id);
@@ -733,7 +697,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
                   year: "2-digit",
                 })
               : "No date";
-            const buttonColor = isActive ? "#10b981" : isSaved ? "#3b82f6" : "#64748b";
+            const buttonColor = isActive ? "#10b981" : isSaved ? "#a30505" : "#64748b";
 
             return (
               <div
@@ -781,9 +745,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
           })}
         </div>
 
-        {/* MAIN CHART AREA */}
         <div style={{ position: "relative", width: trackWidth, height: chartHeight }}>
-          {/* Zebra rows */}
           {orderedItems.map((item, idx) =>
             idx % 2 === 1 ? (
               <div
@@ -801,7 +763,6 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
             ) : null
           )}
 
-          {/* Vertical gridlines */}
           {months.map((m) => (
             <div
               key={m}
@@ -815,7 +776,6 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
             />
           ))}
 
-          {/* Chart bars and labels */}
           {orderedItems.map((item, idx) => {
             const barLeft =
               item.startMonth === AGE_MIN ? 0 : monthToX(item.startMonth);
@@ -825,7 +785,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
             const isMarkedInCurrent =
               activeVisitId && (localMarks[activeVisitId] || new Set()).has(item.id);
 
-            const markedInVisits = visitsInRange.filter((visit) => {
+            const markedInVisits = visits.filter((visit) => {
               return (localMarks[visit.id] || new Set()).has(item.id);
             });
 
@@ -905,8 +865,9 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
             );
           })}
 
-          {/* Visit date labels inside chart - VERTICAL on lines */}
-          {visitsInRange.map((visit) => {
+          {/* Visit date labels inside the chart - VERTICAL on lines */}
+                    {/* Visit date labels inside the chart - VERTICAL on lines */}
+          {visits.map((visit) => {
             const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
             const isActive = activeVisitId === visit.id;
             const isSaved = savedVisitIds.has(visit.id);
@@ -924,7 +885,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
                 key={`date-label-${visit.id}`}
                 style={{
                   position: "absolute",
-                  left: monthToX(sliderPos) + 6,
+                  left: monthToX(sliderPos) + 6, // Offset to the right of the line
                   top: "50%",
                   transform: "translate(0, -50%)",
                   pointerEvents: "none",
@@ -942,7 +903,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
                     whiteSpace: "nowrap",
                     letterSpacing: "0.5px",
                     padding: "4px 2px",
-                    backgroundColor: "rgba(255, 255, 255, 0.9)",
+                    backgroundColor: "rgba(255, 255, 255, 0.9)", // Semi-transparent white background
                     borderRadius: "2px",
                   }}
                 >
@@ -952,15 +913,14 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
             );
           })}
 
-          {/* Vertical lines for each visit */}
-          {visitsInRange.map((visit) => {
+          {visits.map((visit) => {
             const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
             const isActive = activeVisitId === visit.id;
             const isSaved = savedVisitIds.has(visit.id);
             const lineColor = isActive
               ? "#10b981"
               : isSaved
-                ? "#3b82f6"
+                ? "#df0505"
                 : "#9ca3af";
             return (
               <div
@@ -988,8 +948,14 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
           })}
         </div>
 
-        {/* BOTTOM AXIS */}
-        <div style={{ position: "relative", borderTop: "2px solid #111827", width: trackWidth, height: 20 }}>
+        <div
+          style={{
+            position: "relative",
+            borderTop: "2px solid #111827",
+            width: trackWidth,
+            height: 20,
+          }}
+        >
           {months.map((m) => (
             <div
               key={m}
@@ -1009,7 +975,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
               {m}
             </div>
           ))}
-          {visitsInRange.map((visit) => {
+          {visits.map((visit) => {
             const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
             const isActive = activeVisitId === visit.id;
             const isSaved = savedVisitIds.has(visit.id);
@@ -1048,7 +1014,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
   );
 }
 
-// ─── STYLES ───────────────────────────────────────────────────────────────────
+// ─── COMPLETE REDESIGNED STYLES ──────────────────────────────────────────
 const s: Record<string, React.CSSProperties> = {
   container: {
     width: "100%",
@@ -1059,26 +1025,7 @@ const s: Record<string, React.CSSProperties> = {
     position: "relative",
   },
 
-  noVisitsMessage: {
-    padding: "40px 24px",
-    textAlign: "center",
-    backgroundColor: "#f0fdf4",
-    border: "2px solid #86efac",
-    borderRadius: 8,
-    margin: "24px",
-  },
-  noVisitsText: {
-    fontSize: 16,
-    fontWeight: 600,
-    color: "#166534",
-    margin: "0 0 8px 0",
-  },
-  noVisitsSubtext: {
-    fontSize: 13,
-    color: "#4b7c0f",
-    margin: 0,
-  },
-
+  // GLOBAL TOAST NOTIFICATION
   globalToast: {
     position: "fixed",
     top: 20,
@@ -1096,6 +1043,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "#166534",
     zIndex: 1000,
     boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    animation: "slideDown 0.3s ease-out",
   },
   toastIcon: {
     fontSize: 18,
@@ -1105,6 +1053,7 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 14,
   },
 
+  // TRIANGLE BUTTON
   triangleButton: {
     width: 0,
     height: 0,
@@ -1115,6 +1064,7 @@ const s: Record<string, React.CSSProperties> = {
     transition: "all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
   },
 
+  // HERO HEADER
   heroHeader: {
     padding: "28px 24px",
     background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
@@ -1171,6 +1121,7 @@ const s: Record<string, React.CSSProperties> = {
     color: "#fff",
   },
 
+  // QUICK ACTIONS BAR
   quickActionsBar: {
     display: "flex",
     alignItems: "center",
@@ -1230,6 +1181,7 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "not-allowed",
   },
 
+  // VISIT PANEL - REDESIGNED
   visitPanelRedesigned: {
     margin: 0,
     padding: "16px 24px",
@@ -1320,6 +1272,7 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 800,
   },
 
+  // LEGEND - REDESIGNED
   legendRedesigned: {
     padding: "16px 24px",
     backgroundColor: "#faf5ff",
@@ -1365,6 +1318,7 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 500,
   },
 
+  // ITEMS AT AGE PANEL
   itemsAtAgePanel: {
     marginTop: 0,
     marginBottom: 16,
@@ -1430,6 +1384,7 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
   },
 
+  // SCROLL WRAPPER
   scrollWrapperOuter: {
     margin: "0 24px 24px 24px",
     overflowX: "auto",
@@ -1445,6 +1400,7 @@ const s: Record<string, React.CSSProperties> = {
     margin: "4px 0",
   },
 
+  // WARNING FOOTER
   warningFooter: {
     marginTop: 0,
     marginLeft: 24,

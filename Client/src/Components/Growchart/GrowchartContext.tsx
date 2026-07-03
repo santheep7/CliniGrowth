@@ -8,7 +8,11 @@ export interface Visit {
   height: string;
   weight: string;
   headCirc: string;
+}
 
+export interface TDSCMarks {
+  visitId: string;
+  markedItems: number[]; // array of item IDs that were achieved at this visit
 }
 
 export interface PatientData {
@@ -17,6 +21,7 @@ export interface PatientData {
   gender: Gender;
   gaAtBirth: string;
   visits: Visit[];
+  tdscMarks?: TDSCMarks[]; // marks for TDSC chart
 }
 
 export interface HomeFormState {
