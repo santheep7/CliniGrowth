@@ -9,8 +9,9 @@ export default function Navbar() {
   const links = [
     { path: "/",       label: "Fenton Chart" },
     { path: "/detail", label: "WHO chart" },
-    { path: "/TDSC3yrs", label: "TDSC upto 3 years" },
-    { path: "/DevelopmentScreen", label: "TDSC Chart" },
+    { path: "/TDSC3yrs", label: "TDSC Chart" },
+    // { path: "/DevelopmentScreen", label: "TDSC Chart" },
+    // { path: "/TDS0-6", label: "TDSC Chart 0-6" },
     
   ];
 

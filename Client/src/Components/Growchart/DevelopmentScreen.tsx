@@ -12,6 +12,7 @@ interface TDSCItem {
 interface TDSCChartProps {
   patientName?: string;
   items?: TDSCItem[];
+  onChartChange?: (chart: "0-3" | "3-6" | "0-6") => void;
 }
 
 // ─── Chart constants ────────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ const TDSC_ITEMS: TDSCItem[] = [
 ];
 
 // ─── Component ──────────────────────────────────────────────────────────────
-export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCChartProps) {
+export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartChange }: TDSCChartProps) {
   const { patient, setPatient } = useGrowchart();
   const displayName = patientName || patient?.patientName;
 
@@ -429,6 +430,20 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
               <h1 style={s.mainTitle}>TDSC 3–6 Years</h1>
               <p style={s.headerSubtitle}>Trivandrum Developmental Screening Chart</p>
             </div>
+
+            <div style={s.chartSelectorBox}>
+              <label style={s.chartSelectorLabel}>Switch Chart:</label>
+              <select
+                value="3-6"
+                onChange={(e) => onChartChange && onChartChange(e.target.value as "0-3" | "3-6" | "0-6")}
+                style={s.chartSelectorSelect}
+              >
+                <option value="0-3">📊 0–3 Years</option>
+                <option value="3-6">📊 3–6 Years (Current)</option>
+                <option value="0-6">📊 0–6 Years (Full)</option>
+              </select>
+            </div>
+
             {displayName && (
               <div style={s.patientCardCompact}>
                 <span style={s.patientLabel}>Patient</span>
@@ -467,6 +482,20 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
             <h1 style={s.mainTitle}>TDSC 3–6 Years</h1>
             <p style={s.headerSubtitle}>Trivandrum Developmental Screening Chart</p>
           </div>
+
+          <div style={s.chartSelectorBox}>
+            <label style={s.chartSelectorLabel}>Switch Chart:</label>
+            <select
+              value="3-6"
+              onChange={(e) => onChartChange && onChartChange(e.target.value as "0-3" | "3-6" | "0-6")}
+              style={s.chartSelectorSelect}
+            >
+              <option value="0-3">📊 0–3 Years</option>
+              <option value="3-6">📊 3–6 Years (Current)</option>
+              <option value="0-6">📊 0–6 Years (Full)</option>
+            </select>
+          </div>
+
           {displayName && (
             <div style={s.patientCardCompact}>
               <span style={s.patientLabel}>Patient</span>
@@ -961,7 +990,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS }: TDSCCha
               ? "#10b981"
               : isSaved
                 ? "#3b82f6"
-                : "#9ca3af";
+                : "#000000";
             return (
               <div
                 key={`line-${visit.id}`}
@@ -1145,6 +1174,34 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: "#cbd5e1",
     fontWeight: 400,
+  },
+  chartSelectorBox: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    padding: "10px 14px",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 8,
+    border: "1px solid rgba(255,255,255,0.15)",
+    backdropFilter: "blur(10px)",
+  },
+  chartSelectorLabel: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: "#cbd5e1",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+  },
+  chartSelectorSelect: {
+    padding: "8px 12px",
+    borderRadius: 6,
+    border: "1px solid #7dd3fc",
+    backgroundColor: "#0c4a6e",
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: "pointer",
+    color: "#e0f2fe",
+    transition: "all 0.2s",
   },
   patientCardCompact: {
     display: "flex",

@@ -7,86 +7,128 @@ interface TDSCItem {
   label: string;
   startMonth: number;
   endMonth: number;
+  chart: "0-3" | "3-6";
 }
 
 interface TDSCChartProps {
   patientName?: string;
-  items?: TDSCItem[];
   onChartChange?: (chart: "0-3" | "3-6" | "0-6") => void;
 }
 
 // ─── Chart constants ────────────────────────────────────────────────────────
 const AGE_MIN = 1;
-const AGE_MAX = 36;
-const MONTH_WIDTH = 26;
-const ROW_HEIGHT = 30;
-const BAR_HEIGHT = 15;
-const CHART_LEFT_PAD = 20;
+const AGE_MAX = 72;
+const MONTH_WIDTH = 14;
+const ROW_HEIGHT = 28;
+const BAR_HEIGHT = 13;
+const CHART_LEFT_PAD = 24;
 const LABEL_GAP = 6;
-const RIGHT_EDGE_CUTOFF = 30;
+const RIGHT_EDGE_CUTOFF = 65;
 const SLIDER_HEIGHT = 40;
 const HTML2CANVAS_SRC = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
 const JSPDF_SRC = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 
-const TDSC_ITEMS: TDSCItem[] = [
-  { id: 1,  label: "Social smile",                                            startMonth: 1,  endMonth: 2 },
-  { id: 2,  label: "Eyes follow pen/pencil",                                  startMonth: 1,  endMonth: 3 },
-  { id: 3,  label: "Hold head steady",                                        startMonth: 1,  endMonth: 4 },
-  { id: 4,  label: "Rolls from back to stomach",                              startMonth: 3,    endMonth: 5 },
-  { id: 5,  label: "Turns head to sound of bell/rattle",                      startMonth: 3,    endMonth: 6 },
-  { id: 6,  label: "Transfers objects hand to hand",                         startMonth: 4,    endMonth: 7 },
-  { id: 7,  label: "Raises self to sitting position",                        startMonth: 6,    endMonth: 11 },
-  { id: 8,  label: "Standing up by furniture",                               startMonth: 7.5,  endMonth: 11 },
-  { id: 9,  label: "Fine prehension pellet",                                 startMonth: 7,    endMonth: 11 },
-  { id: 10, label: "Pat a cake",                                             startMonth: 7,    endMonth: 13 },
-  { id: 11, label: "Walks with help",                                        startMonth: 8,    endMonth: 13 },
-  { id: 12, label: "Throws ball",                                            startMonth: 10,   endMonth: 17 },
-  { id: 13, label: "Walks alone",                                            startMonth: 10,   endMonth: 17 },
-  { id: 14, label: "Says two words",                                         startMonth: 11,   endMonth: 19 },
-  { id: 15, label: "Walks backwards",                                        startMonth: 11,   endMonth: 20.5 },
-  { id: 16, label: "Walks upstairs with help",                               startMonth: 12,   endMonth: 25.5 },
-  { id: 17, label: "Points to parts of doll (3 parts)",                      startMonth: 15,   endMonth: 25.5 },
-  { id: 18, label: "Removes garments",                                       startMonth: 21,   endMonth: 25 },
-  { id: 19, label: "Uses words for personal needs",                          startMonth: 24,   endMonth: 27 },
-  { id: 20, label: "Jumps in place",                                         startMonth: 26,   endMonth: 29 },
-  { id: 21, label: "Differentiates big & small",                             startMonth: 27,   endMonth: 30 },
-  { id: 22, label: "Points to 7 common objects",                             startMonth: 26,   endMonth: 31 },
-  { id: 23, label: "Brush teeth with help",                                  startMonth: 23,   endMonth: 32 },
-  { id: 24, label: "Tells gender when asked",                                startMonth: 30,   endMonth: 33 },
-  { id: 25, label: "On instruction places objects 'IN', 'ON', & 'UNDER'",    startMonth: 23,   endMonth: 35 },
-  { id: 26, label: "Asks simple questions",                                  startMonth: 33,   endMonth: 36 },
-  { id: 27, label: "Answers at least half understandable to others",         startMonth: 30,   endMonth: 36 },
+// 0-3 Years Items
+const TDSC_ITEMS_03: TDSCItem[] = [
+  { id: 1,  label: "Social smile",                                            startMonth: 1,  endMonth: 2, chart: "0-3" },
+  { id: 2,  label: "Eyes follow pen/pencil",                                  startMonth: 1,  endMonth: 3, chart: "0-3" },
+  { id: 3,  label: "Hold head steady",                                        startMonth: 2,  endMonth: 4, chart: "0-3" },
+  { id: 4,  label: "Rolls from back to stomach",                              startMonth: 3,  endMonth: 6, chart: "0-3" },
+  { id: 5,  label: "Turns head to sound of bell/rattle",                      startMonth: 4,  endMonth: 7, chart: "0-3" },
+  { id: 6,  label: "Transfers objects hand to hand",                         startMonth: 5,  endMonth: 9, chart: "0-3" },
+  { id: 7,  label: "Raises self to sitting position",                        startMonth: 6,  endMonth: 9, chart: "0-3" },
+  { id: 8,  label: "Standing up by furniture",                               startMonth: 6,  endMonth: 10, chart: "0-3" },
+  { id: 9,  label: "Fine prehension pellet",                                 startMonth: 7,  endMonth: 10, chart: "0-3" },
+  { id: 10, label: "Pat a cake",                                             startMonth: 8,  endMonth: 11, chart: "0-3" },
+  { id: 11, label: "Walks with help",                                        startMonth: 9,  endMonth: 13, chart: "0-3" },
+  { id: 12, label: "Throws ball",                                            startMonth: 11, endMonth: 16, chart: "0-3" },
+  { id: 13, label: "Walks alone",                                            startMonth: 12, endMonth: 17, chart: "0-3" },
+  { id: 14, label: "Says two words",                                         startMonth: 12, endMonth: 18, chart: "0-3" },
+  { id: 15, label: "Walks backwards",                                        startMonth: 13, endMonth: 19, chart: "0-3" },
+  { id: 16, label: "Walks upstairs with help",                               startMonth: 15, endMonth: 23, chart: "0-3" },
+  { id: 17, label: "Points to parts of doll (3 parts)",                      startMonth: 16, endMonth: 23, chart: "0-3" },
+  { id: 18, label: "Removes garments",                                       startMonth: 18, endMonth: 24, chart: "0-3" },
+  { id: 19, label: "Uses words for personal needs",                          startMonth: 19, endMonth: 24, chart: "0-3" },
+  { id: 20, label: "Jumps in place",                                         startMonth: 20, endMonth: 24, chart: "0-3" },
+  { id: 21, label: "Differentiates big & small",                             startMonth: 20, endMonth: 24, chart: "0-3" },
+  { id: 22, label: "Points to 7 common objects",                             startMonth: 21, endMonth: 25, chart: "0-3" },
+  { id: 23, label: "Brush teeth with help",                                  startMonth: 21, endMonth: 25, chart: "0-3" },
+  { id: 24, label: "Tells gender when asked",                                startMonth: 22, endMonth: 26, chart: "0-3" },
+  { id: 25, label: "On instruction places objects 'IN', 'ON', & 'UNDER'",    startMonth: 23, endMonth: 27, chart: "0-3" },
+  { id: 26, label: "Asks simple questions",                                  startMonth: 24, endMonth: 34, chart: "0-3" },
+  { id: 27, label: "Answers at least half understandable to others",         startMonth: 25, endMonth: 35, chart: "0-3" },
 ];
 
+// 3-6 Years Items
+const TDSC_ITEMS_36: TDSCItem[] = [
+  { id: 1,  label: "Broad jump (Both legs)",                          startMonth: 36, endMonth: 37, chart: "3-6" },
+  { id: 2,  label: "Copy circle",                                     startMonth: 36, endMonth: 39, chart: "3-6" },
+  { id: 3,  label: "Balance one foot one second",                     startMonth: 36, endMonth: 40, chart: "3-6" },
+  { id: 4,  label: "Answers 2 questions (e.g., Hungry, cold)",        startMonth: 36, endMonth: 43, chart: "3-6" },
+  { id: 5,  label: "Names one color",                                 startMonth: 36, endMonth: 45, chart: "3-6" },
+  { id: 6,  label: "Tells use of 2 objects (e.g., pencil, chair)",    startMonth: 36, endMonth: 45, chart: "3-6" },
+  { id: 7,  label: "Concept of one (Pick '1' from a group)",          startMonth: 36, endMonth: 46, chart: "3-6" },
+  { id: 8,  label: "Plays near and talk with peers",                  startMonth: 45, endMonth: 50, chart: "3-6" },
+  { id: 9,  label: "Hops continuously 3 steps",                       startMonth: 45, endMonth: 52, chart: "3-6" },
+  { id: 10, label: "Draw person with 3 parts",                        startMonth: 47, endMonth: 55, chart: "3-6" },
+  { id: 11, label: "Writes 3 alphabets (e.g.: A, E, D)",              startMonth: 48, endMonth: 56, chart: "3-6" },
+  { id: 12, label: "Tells function of 3 body parts",                  startMonth: 49, endMonth: 57, chart: "3-6" },
+  { id: 13, label: "Paints/shades blank circle",                      startMonth: 50, endMonth: 59, chart: "3-6" },
+  { id: 14, label: "Define/explain 10 words",                         startMonth: 51, endMonth: 59, chart: "3-6" },
+  { id: 15, label: "Heel to toe walk 4 consecutive steps",            startMonth: 48, endMonth: 60, chart: "3-6" },
+  { id: 16, label: "Answers why questions",                           startMonth: 51, endMonth: 60, chart: "3-6" },
+  { id: 17, label: "Folds paper diagonally twice",                    startMonth: 51, endMonth: 63, chart: "3-6" },
+  { id: 18, label: "Copy 3 shapes",                                   startMonth: 53, endMonth: 64, chart: "3-6" },
+  { id: 19, label: "Points to middle",                                startMonth: 52, endMonth: 65, chart: "3-6" },
+  { id: 20, label: "Picks 5 objects from the group",                  startMonth: 55, endMonth: 66, chart: "3-6" },
+  { id: 21, label: "Button/unbutton",                                 startMonth: 56, endMonth: 68, chart: "3-6" },
+  { id: 22, label: "Names days of a week in order",                   startMonth: 57, endMonth: 70, chart: "3-6" },
+  { id: 23, label: "Uses 5–6 word sentences",                         startMonth: 60, endMonth: 72, chart: "3-6" },
+  { id: 24, label: "Writes own name",                                 startMonth: 61, endMonth: 72, chart: "3-6" },
+];
+
+const ALL_ITEMS: TDSCItem[] = [...TDSC_ITEMS_03, ...TDSC_ITEMS_36];
+
+// Unique row identifier — ids repeat between the 0-3 and 3-6 sets, so every
+// place we key/store/mark an item, we use this instead of the raw numeric id.
+const uidOf = (item: TDSCItem) => `${item.chart}:${item.id}`;
+
 // ─── Component ──────────────────────────────────────────────────────────────
-export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChange }: TDSCChartProps) {
+export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartProps) {
   const { patient, setPatient } = useGrowchart();
   const displayName = patientName || patient?.patientName;
 
   const visits = patient?.visits || [];
-  const tdscMarks = patient?.tdscMarks || [];
+  const tdscMarks03 = (patient?.tdscMarks as { visitId: string; markedItems: number[] }[]) || [];
+  const tdscMarks36 = (patient?.tdscMarks36 as { visitId: string; markedItems: number[] }[]) || [];
 
   const [sessionSavedIds, setSessionSavedIds] = useState<Set<string>>(new Set());
   const savedVisitIds = useMemo(() => {
-    const fromContext = tdscMarks.filter(m => (m.markedItems?.length ?? 0) > 0).map(m => m.visitId);
-    return new Set([...fromContext, ...sessionSavedIds]);
-  }, [tdscMarks, sessionSavedIds]);
+    const fromContext03 = tdscMarks03.filter(m => (m.markedItems?.length ?? 0) > 0).map(m => m.visitId);
+    const fromContext36 = tdscMarks36.filter(m => (m.markedItems?.length ?? 0) > 0).map(m => m.visitId);
+    return new Set([...fromContext03, ...fromContext36, ...sessionSavedIds]);
+  }, [tdscMarks03, tdscMarks36, sessionSavedIds]);
 
   const [activeVisitId, setActiveVisitId] = useState<string | null>(null);
-  const [localMarks, setLocalMarks] = useState<{ [visitId: string]: Set<number> }>(
-    () => {
-      const marks: { [visitId: string]: Set<number> } = {};
-      tdscMarks.forEach(mark => {
-        marks[mark.visitId] = new Set(mark.markedItems);
-      });
-      return marks;
-    }
-  );
+
+  // localMarks maps visitId -> Set of uids ("0-3:5", "3-6:12", ...)
+  const [localMarks, setLocalMarks] = useState<{ [visitId: string]: Set<string> }>(() => {
+    const marks: { [visitId: string]: Set<string> } = {};
+    tdscMarks03.forEach(mark => {
+      if (!marks[mark.visitId]) marks[mark.visitId] = new Set();
+      mark.markedItems.forEach(id => marks[mark.visitId].add(`0-3:${id}`));
+    });
+    tdscMarks36.forEach(mark => {
+      if (!marks[mark.visitId]) marks[mark.visitId] = new Set();
+      mark.markedItems.forEach(id => marks[mark.visitId].add(`3-6:${id}`));
+    });
+    return marks;
+  });
 
   const [sliderPositions, setSliderPositions] = useState<{ [visitId: string]: number }>(() => {
     const positions: { [visitId: string]: number } = {};
     visits.forEach(visit => {
-      const stored = localStorage.getItem(`tdsc-slider-${visit.id}`);
+      const stored = localStorage.getItem(`tdsc-slider-06-${visit.id}`);
       positions[visit.id] = stored ? parseInt(stored) : AGE_MIN;
     });
     return positions;
@@ -98,7 +140,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
       const next = { ...prev };
       visits.forEach(visit => {
         if (!(visit.id in next)) {
-          const stored = localStorage.getItem(`tdsc-slider-${visit.id}`);
+          const stored = localStorage.getItem(`tdsc-slider-06-${visit.id}`);
           next[visit.id] = stored ? parseInt(stored) : AGE_MIN;
           changed = true;
         }
@@ -111,7 +153,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
     if (!activeVisitId) return;
 
     const sliderMonth = sliderPositions[activeVisitId] ?? AGE_MIN;
-    const itemsInRange = items.filter(
+    const itemsInRange = ALL_ITEMS.filter(
       item => sliderMonth >= item.startMonth && sliderMonth <= item.endMonth
     );
 
@@ -121,13 +163,13 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
         newMarks[activeVisitId] = new Set();
       }
 
-      const newSet = new Set<number>();
+      const newSet = new Set<string>();
       itemsInRange.forEach(item => {
-        newSet.add(item.id);
+        newSet.add(uidOf(item));
       });
 
       const oldSet = newMarks[activeVisitId];
-      if (newSet.size !== oldSet.size || [...newSet].some(id => !oldSet.has(id))) {
+      if (newSet.size !== oldSet.size || [...newSet].some(uid => !oldSet.has(uid))) {
         return {
           ...prev,
           [activeVisitId]: newSet,
@@ -135,9 +177,9 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
       }
       return prev;
     });
-  }, [sliderPositions, activeVisitId, items]);
+  }, [sliderPositions, activeVisitId]);
 
-  const toggleItemMark = (visitId: string, itemId: number) => {
+  const toggleItemMark = (visitId: string, uid: string) => {
     setLocalMarks(prev => {
       const newMarks = { ...prev };
       if (!newMarks[visitId]) {
@@ -145,10 +187,10 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
       } else {
         newMarks[visitId] = new Set(newMarks[visitId]);
       }
-      if (newMarks[visitId].has(itemId)) {
-        newMarks[visitId].delete(itemId);
+      if (newMarks[visitId].has(uid)) {
+        newMarks[visitId].delete(uid);
       } else {
-        newMarks[visitId].add(itemId);
+        newMarks[visitId].add(uid);
       }
       return newMarks;
     });
@@ -159,7 +201,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
       ...prev,
       [visitId]: newMonth,
     }));
-    localStorage.setItem(`tdsc-slider-${visitId}`, String(newMonth));
+    localStorage.setItem(`tdsc-slider-06-${visitId}`, String(newMonth));
   };
 
   const [showSavedToast, setShowSavedToast] = useState(false);
@@ -168,15 +210,27 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
 
   const saveMarks = () => {
     if (!patient || !activeVisitId) return;
-    
-    const newTdscMarks = Object.entries(localMarks).map(([visitId, markedItems]) => ({
+
+    // Split the combined uid marks back into the two storage shapes the
+    // 0-3 and 3-6 pages already read from (patient.tdscMarks / tdscMarks36).
+    const newTdscMarks03 = Object.entries(localMarks).map(([visitId, uidSet]) => ({
       visitId,
-      markedItems: Array.from(markedItems),
+      markedItems: [...uidSet]
+        .filter(uid => uid.startsWith("0-3:"))
+        .map(uid => parseInt(uid.slice(4), 10)),
     }));
-    
+
+    const newTdscMarks36 = Object.entries(localMarks).map(([visitId, uidSet]) => ({
+      visitId,
+      markedItems: [...uidSet]
+        .filter(uid => uid.startsWith("3-6:"))
+        .map(uid => parseInt(uid.slice(4), 10)),
+    }));
+
     setPatient({
       ...patient,
-      tdscMarks: newTdscMarks,
+      tdscMarks: newTdscMarks03,
+      tdscMarks36: newTdscMarks36,
     });
 
     setSessionSavedIds(prev => {
@@ -210,9 +264,10 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
     []
   );
 
+  // Highest-age items at the top, mirroring the single-range charts' convention.
   const orderedItems = useMemo(
-    () => [...items].sort((a, b) => b.id - a.id),
-    [items]
+    () => [...ALL_ITEMS].sort((a, b) => b.startMonth - a.startMonth || b.endMonth - a.endMonth),
+    []
   );
 
   const [containerWidth, setContainerWidth] = useState(0);
@@ -333,18 +388,18 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
     const sw = scrollWrapperRef.current;
     const prevWidth = sw.style.width;
     const prevOverflowX = sw.style.overflowX;
-    
+
     try {
       const { html2canvas, jsPDF } = await ensureLibraries();
-      
+
       sw.style.width = `${trackWidth}px`;
       sw.style.overflowX = "visible";
-      
+
       const canvas = await html2canvas(exportRef.current, {
         backgroundColor: "#ffffff",
         scale: 2,
       });
-      
+
       sw.style.width = prevWidth;
       sw.style.overflowX = prevOverflowX;
 
@@ -375,8 +430,8 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
 
       const namePart = displayName ? `-${displayName.trim().replace(/\s+/g, "_")}` : "";
       const timestamp = new Date().toISOString().slice(0, 10);
-      const filename = `TDSC-0-3-chart${namePart}-${timestamp}.pdf`;
-      
+      const filename = `TDSC-0-6-chart${namePart}-${timestamp}.pdf`;
+
       pdf.save(filename);
     } catch (err) {
       sw.style.width = prevWidth;
@@ -387,6 +442,44 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
       setIsExporting(false);
     }
   };
+
+  if (visits.length === 0) {
+    return (
+      <div style={s.container} ref={exportRef}>
+        <div style={s.heroHeader}>
+          <div style={s.headerContent}>
+            <div style={s.headerTitleGroup}>
+              <h1 style={s.mainTitle}>TDSC 0–6 Years</h1>
+              <p style={s.headerSubtitle}>Complete Developmental Screening Chart (1–72 months)</p>
+            </div>
+
+            <div style={s.chartSelectorBox}>
+              <label style={s.chartSelectorLabel}>Switch Chart:</label>
+              <select
+                value="0-6"
+                onChange={(e) => onChartChange && onChartChange(e.target.value as "0-3" | "3-6" | "0-6")}
+                style={s.chartSelectorSelect}
+              >
+                <option value="0-3">📊 0–3 Years</option>
+                <option value="3-6">📊 3–6 Years</option>
+                <option value="0-6">📊 0–6 Years (Current)</option>
+              </select>
+            </div>
+
+            {displayName && (
+              <div style={s.patientCardCompact}>
+                <span style={s.patientLabel}>Patient</span>
+                <span style={s.patientName}>{displayName}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div style={s.noVisitsMessage}>
+          <p style={s.noVisitsText}>ℹ️ No visits found for this patient.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={s.container} ref={exportRef}>
@@ -401,24 +494,20 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
       <div style={s.heroHeader}>
         <div style={s.headerContent}>
           <div style={s.headerTitleGroup}>
-            <h1 style={s.mainTitle}>TDSC 0–3 Years</h1>
-            <p style={s.headerSubtitle}>Trivandrum Developmental Screening Chart</p>
+            <h1 style={s.mainTitle}>TDSC 0–6 Years</h1>
+            <p style={s.headerSubtitle}>Complete Developmental Screening Chart (1–72 months)</p>
           </div>
 
-          {/* CHART SELECTOR DROPDOWN */}
           <div style={s.chartSelectorBox}>
             <label style={s.chartSelectorLabel}>Switch Chart:</label>
             <select
-  value="0-3"
-  onChange={(e) => {
-    console.log("RAW select change fired:", e.target.value);
-    onChartChange && onChartChange(e.target.value as "0-3" | "3-6" | "0-6");
-  }}
-  style={s.chartSelectorSelect}
->
-              <option value="0-3"> 0–3 Years (Current)</option>
-              <option value="3-6"> 3–6 Years</option>
-              <option value="0-6"> 0–6 Years (Full)</option>
+              value="0-6"
+              onChange={(e) => onChartChange && onChartChange(e.target.value as "0-3" | "3-6" | "0-6")}
+              style={s.chartSelectorSelect}
+            >
+              <option value="0-3">📊 0–3 Years</option>
+              <option value="3-6">📊 3–6 Years</option>
+              <option value="0-6">📊 0–6 Years (Current)</option>
             </select>
           </div>
 
@@ -490,7 +579,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                         year: "2-digit",
                       })
                     : "No date";
-                  const markedItems = localMarks[visit.id] || new Set<number>();
+                  const markedItems = localMarks[visit.id] || new Set<string>();
                   const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
                   const isLocked =
                     savedVisitIds.has(visit.id) && visit.id !== activeVisitId;
@@ -527,7 +616,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                     <span style={s.saveTick}>✓</span> Saved
                   </>
                 ) : (
-                  "Save"
+                  "💾 Save"
                 )}
               </button>
             )}
@@ -542,25 +631,14 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
             <span
               style={{
                 ...s.legendGlyph,
-                clipPath: "polygon(50% 0, 0 100%, 100% 100%)",
-                backgroundColor: "#111827",
+                backgroundColor: "#9ca3af",
               }}
             />
-            Age item introduced
+            0–3 years item
           </span>
           <span style={s.legendItemNew}>
-            <span style={{ ...s.legendGlyph, backgroundColor: "#111827" }} />
-            50% pass age
-          </span>
-          <span style={s.legendItemNew}>
-            <span
-              style={{
-                ...s.legendGlyph,
-                borderRadius: "50%",
-                backgroundColor: "#111827",
-              }}
-            />
-            90% pass age
+            <span style={{ ...s.legendGlyph, backgroundColor: "#000000" }} />
+            3–6 years item
           </span>
         </div>
         <div style={s.warningBanner}>
@@ -579,7 +657,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
           </h4>
           <p style={s.itemsAtAgeSubtitle}>These items are automatically selected and will be saved</p>
           <div style={s.itemsGrid}>
-            {items
+            {ALL_ITEMS
               .filter((item) => {
                 const sliderMonth = sliderPositions[activeVisitId] ?? AGE_MIN;
                 return (
@@ -588,30 +666,31 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                 );
               })
               .map((item) => {
+                const uid = uidOf(item);
                 const isMarked = (
                   localMarks[activeVisitId] || new Set()
-                ).has(item.id);
+                ).has(uid);
                 return (
                   <div
-                    key={item.id}
+                    key={uid}
                     style={{
                       ...s.markableItem,
                       ...(isMarked
                         ? s.markableItemMarked
                         : s.markableItemInRange),
                     }}
-                    onClick={() => toggleItemMark(activeVisitId, item.id)}
+                    onClick={() => toggleItemMark(activeVisitId, uid)}
                     role="button"
                     tabIndex={0}
                   >
-                    <span style={s.itemNumber}>{item.id}</span>
+                    <span style={s.itemNumber}>{item.chart} · {item.id}</span>
                     <span style={s.itemLabelText}>{item.label}</span>
                     {isMarked && <span style={s.checkmark}>✓</span>}
                   </div>
                 );
               })}
           </div>
-          {items.filter((item) => {
+          {ALL_ITEMS.filter((item) => {
             const sliderMonth = sliderPositions[activeVisitId] ?? AGE_MIN;
             return (
               sliderMonth >= item.startMonth &&
@@ -647,14 +726,19 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                 left: monthToX(m),
                 top: 0,
                 bottom: 0,
-                borderLeft: m % 5 === 0 ? "1px solid #9ca3af" : "1px solid #e2e5e9",
+                borderLeft:
+                  m === 36
+                    ? "2px solid #f97316"
+                    : m % 6 === 0
+                      ? "1px solid #9ca3af"
+                      : "1px solid #e2e5e9",
                 pointerEvents: "none",
               }}
             />
           ))}
 
           {months
-            .filter((m) => m % 5 === 0)
+            .filter((m) => m % 6 === 0)
             .map((m) => (
               <div
                 key={`slider-label-${m}`}
@@ -685,7 +769,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                   year: "2-digit",
                 })
               : "No date";
-            const buttonColor = isActive ? "#10b981" : isSaved ? "#3b82f6" : "#010101";
+            const buttonColor = isActive ? "#10b981" : isSaved ? "#3b82f6" : "#64748b";
 
             return (
               <div
@@ -735,7 +819,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
           {orderedItems.map((item, idx) =>
             idx % 2 === 1 ? (
               <div
-                key={`stripe-${item.id}`}
+                key={`stripe-${uidOf(item)}`}
                 style={{
                   position: "absolute",
                   top: idx * ROW_HEIGHT,
@@ -757,27 +841,33 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                 left: monthToX(m),
                 top: 0,
                 bottom: 0,
-                borderLeft: m % 5 === 0 ? "1px solid #9ca3af" : "1px solid #e5e7eb",
+                borderLeft:
+                  m === 36
+                    ? "2px solid #f97316"
+                    : m % 6 === 0
+                      ? "1px solid #9ca3af"
+                      : "1px solid #e5e7eb",
               }}
             />
           ))}
 
           {orderedItems.map((item, idx) => {
+            const uid = uidOf(item);
             const barLeft =
-              item.id === 1 ? 0 : monthToX(item.startMonth);
+              item.startMonth === AGE_MIN ? 0 : monthToX(item.startMonth);
             const barWidth = Math.max(2, monthToX(item.endMonth) - barLeft);
             const labelAfterBar = item.endMonth < RIGHT_EDGE_CUTOFF;
 
             const isMarkedInCurrent =
-              activeVisitId && (localMarks[activeVisitId] || new Set()).has(item.id);
+              activeVisitId && (localMarks[activeVisitId] || new Set()).has(uid);
 
             const markedInVisits = visits.filter((visit) => {
-              return (localMarks[visit.id] || new Set()).has(item.id);
+              return (localMarks[visit.id] || new Set()).has(uid);
             });
 
             return (
               <div
-                key={item.id}
+                key={uid}
                 style={{
                   position: "absolute",
                   top: idx * ROW_HEIGHT,
@@ -819,7 +909,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                     top: (ROW_HEIGHT - BAR_HEIGHT) / 2,
                     width: barWidth,
                     height: BAR_HEIGHT,
-                    backgroundColor: idx % 2 === 0 ? "#9ca3af" : "#000000",
+                    backgroundColor: item.chart === "0-3" ? "#9ca3af" : "#000000",
                     border: isMarkedInCurrent
                       ? "2px solid #22c55e"
                       : "1px solid #111827",
@@ -844,7 +934,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                       : { right: trackWidth - barLeft + LABEL_GAP }),
                   }}
                 >
-                  <span style={{ fontWeight: 700 }}>{item.id}</span>
+                  <span style={{ fontWeight: 700 }}>{item.chart}·{item.id}</span>
                   <span>{item.label}</span>
                 </div>
               </div>
@@ -863,7 +953,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                 })
               : "No date";
             const labelColor = isActive ? "#10b981" : isSaved ? "#3b82f6" : "#64748b";
-            
+
             return (
               <div
                 key={`date-label-${visit.id}`}
@@ -905,7 +995,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
               ? "#10b981"
               : isSaved
                 ? "#3b82f6"
-                : "#000000";
+                : "#9ca3af";
             return (
               <div
                 key={`line-${visit.id}`}
@@ -986,7 +1076,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
             );
           })}
         </div>
-        <p style={s.axisLabel}>AGE IN MONTHS</p>
+        <p style={s.axisLabel}>AGE IN MONTHS (orange line = 3 year mark)</p>
       </div>
 
       <p style={s.warningFooter}>
@@ -1077,7 +1167,6 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 400,
   },
 
-  // CHART SELECTOR STYLES
   chartSelectorBox: {
     display: "flex",
     flexDirection: "column",
@@ -1375,10 +1464,10 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 600,
   },
   itemNumber: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 700,
     color: "#1f2937",
-    minWidth: 24,
+    minWidth: 40,
   },
   itemLabelText: {
     fontSize: 12,
@@ -1404,6 +1493,21 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     color: "#1f2937",
     margin: "4px 0",
+  },
+
+  noVisitsMessage: {
+    padding: "40px 24px",
+    textAlign: "center",
+    backgroundColor: "#f0fdf4",
+    border: "2px solid #86efac",
+    borderRadius: 8,
+    margin: "24px",
+  },
+  noVisitsText: {
+    fontSize: 16,
+    fontWeight: 600,
+    color: "#166534",
+    margin: 0,
   },
 
   warningFooter: {
