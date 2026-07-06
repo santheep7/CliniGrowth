@@ -2,6 +2,20 @@ import { useMemo, useRef, useState, useCallback, useEffect } from "react";
 import { useGrowchart } from "./GrowchartContext";
 import { gsap } from "gsap";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface TDSCItem {
+  id: number;
+  label: string;
+  startMonth: number;
+  endMonth: number;
+}
+
+interface TDSCChartProps {
+  patientName?: string;
+  items?: TDSCItem[];
+  onChartChange?: (chart: "0-3" | "3-6" | "0-6") => void;
+}
+
 // ─── Chart constants ────────────────────────────────────────────────────────
 const AGE_MIN = 1;
 const AGE_MAX = 36;
@@ -755,30 +769,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                   borderBottom: "1px solid #f1f1f1",
                 }}
               >
-                {markedInVisits.map((visit) => {
-                  const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
-                  return (
-                    <div
-                      key={`mark-${visit.id}`}
-                      style={{
-                        position: "absolute",
-                        left: monthToX(sliderPos) - 8,
-                        top: 0,
-                        width: 16,
-                        height: ROW_HEIGHT,
-                        backgroundColor:
-                          visit.id === activeVisitId
-                            ? "#dcfce7"
-                            : "rgba(219, 234, 254, 0.4)",
-                        borderLeft:
-                          "2px dashed " +
-                          (visit.id === activeVisitId ? "#22c55e" : "#93c5fd"),
-                        pointerEvents: "none",
-                        zIndex: 0,
-                      }}
-                    />
-                  );
-                })}
+                {/* visit position markers removed */}
 
                 <div
                   style={{
@@ -846,7 +837,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
               >
                 <div
                   style={{
-                    fontSize: 8,
+                    fontSize: 11,
                     fontWeight: 700,
                     color: labelColor,
                     writingMode: "vertical-rl",

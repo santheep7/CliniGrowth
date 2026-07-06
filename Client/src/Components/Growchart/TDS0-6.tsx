@@ -876,30 +876,7 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
                   borderBottom: "1px solid #f1f1f1",
                 }}
               >
-                {markedInVisits.map((visit) => {
-                  const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
-                  return (
-                    <div
-                      key={`mark-${visit.id}`}
-                      style={{
-                        position: "absolute",
-                        left: monthToX(sliderPos) - 8,
-                        top: 0,
-                        width: 16,
-                        height: ROW_HEIGHT,
-                        backgroundColor:
-                          visit.id === activeVisitId
-                            ? "#dcfce7"
-                            : "rgba(219, 234, 254, 0.4)",
-                        borderLeft:
-                          "2px dashed " +
-                          (visit.id === activeVisitId ? "#22c55e" : "#93c5fd"),
-                        pointerEvents: "none",
-                        zIndex: 0,
-                      }}
-                    />
-                  );
-                })}
+                {/* visit position markers removed */}
 
                 <div
                   style={{
@@ -967,7 +944,7 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
               >
                 <div
                   style={{
-                    fontSize: 8,
+                    fontSize: 11,
                     fontWeight: 700,
                     color: labelColor,
                     writingMode: "vertical-rl",

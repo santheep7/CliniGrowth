@@ -21,7 +21,8 @@ export interface PatientData {
   gender: Gender;
   gaAtBirth: string;
   visits: Visit[];
-  tdscMarks?: TDSCMarks[]; // marks for TDSC chart
+  tdscMarks?: TDSCMarks[];    // marks for TDSC 0-3 chart
+  tdscMarks36?: TDSCMarks[];  // marks for TDSC 3-6 chart
 }
 
 export interface HomeFormState {
