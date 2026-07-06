@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useCallback, useEffect } from "react";
 import { useGrowchart } from "./GrowchartContext";
-
+import { gsap } from "gsap";
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface TDSCItem {
   id: number;
@@ -272,6 +272,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartCh
   const [isDragging, setIsDragging] = useState(false);
   const [draggingVisitId, setDraggingVisitId] = useState<string | null>(null);
   const sliderTrackRef = useRef<HTMLDivElement>(null);
+  const sliderBtnRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const monthFromClientX = useCallback((clientX: number) => {
     const el = sliderTrackRef.current;
@@ -295,6 +296,8 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartCh
     setActiveVisitId(visitId);
     setDraggingVisitId(visitId);
     setIsDragging(true);
+    const btn = sliderBtnRefs.current[visitId];
+    if (btn) gsap.to(btn, { scaleX: 1.25, scaleY: 0.88, duration: 0.18, ease: "back.out(2)" });
   };
 
   const handleSliderButtonMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -304,11 +307,13 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartCh
   };
 
   const handleSliderButtonUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (draggingVisitId) {
+      const btn = sliderBtnRefs.current[draggingVisitId];
+      if (btn) gsap.to(btn, { scaleX: 1, scaleY: 1, duration: 0.32, ease: "elastic.out(1.2, 0.5)" });
+    }
     setIsDragging(false);
     setDraggingVisitId(null);
-    try {
-      (e.target as Element).releasePointerCapture(e.pointerId);
-    } catch {
+    try { (e.target as Element).releasePointerCapture(e.pointerId); } catch {
       // no-op
     }
   };
@@ -579,15 +584,6 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartCh
               </select>
             </div>
 
-            <div style={s.ageReadoutCompact}>
-              <label style={s.ageReadoutLabel}>Age:</label>
-              <div style={s.ageReadoutValue}>
-                {activeVisitId
-                  ? `${sliderPositions[activeVisitId] ?? AGE_MIN} months`
-                  : "—"}
-              </div>
-            </div>
-
             {activeVisitId && (
               <button
                 type="button"
@@ -762,7 +758,7 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartCh
                   year: "2-digit",
                 })
               : "No date";
-            const buttonColor = isActive ? "#10b981" : isSaved ? "#3b82f6" : "#64748b";
+            const buttonColor = (isSaved && !isDraggingThis) ? "#111827" : "#ef4444";
 
             return (
               <div
@@ -775,21 +771,24 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartCh
                   zIndex: isActive ? 12 : isSaved ? 10 : 8,
                 }}
               >
-                {/* Triangle Button */}
+                {/* Rectangular Slider Button */}
                 <div
+                  ref={el => { sliderBtnRefs.current[visit.id] = el; }}
                   onPointerDown={(e) => handleSliderButtonDown(e, visit.id)}
                   onPointerMove={handleSliderButtonMove}
                   onPointerUp={handleSliderButtonUp}
                   onPointerCancel={handleSliderButtonUp}
                   title={`${visitDate} · ${sliderPos} months`}
                   style={{
-                    ...s.triangleButton,
-                    borderBottomColor: buttonColor,
-                    cursor:
-                      isDraggingThis ? "grabbing" : "grab",
+                    width: 22,
+                    height: 36,
+                    borderRadius: 5,
+                    backgroundColor: buttonColor,
+                    boxShadow: isDraggingThis ? `0 4px 16px ${buttonColor}80` : `0 2px 6px ${buttonColor}60`,
+                    cursor: isDraggingThis ? "grabbing" : "grab",
                     pointerEvents: "auto",
-                    transform: isDraggingThis ? "scale(1.15)" : "scale(1)",
-                    filter: isDraggingThis ? `drop-shadow(0 0 4px ${buttonColor}80)` : "none",
+                    transformOrigin: "center center",
+                    backgroundImage: `repeating-linear-gradient(to bottom, transparent, transparent 4px, rgba(255,255,255,0.35) 4px, rgba(255,255,255,0.35) 5px)`,
                   }}
                 />
 
@@ -986,11 +985,9 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartCh
             const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
             const isActive = activeVisitId === visit.id;
             const isSaved = savedVisitIds.has(visit.id);
-            const lineColor = isActive
-              ? "#10b981"
-              : isSaved
-                ? "#3b82f6"
-                : "#000000";
+            const isDraggingThis = isDragging && draggingVisitId === visit.id;
+            const lineColor = (isSaved && !isDraggingThis) ? "#111827" : "#ef4444";
+            const lineWidth = (isSaved && !isDraggingThis) ? 3 : 2;
             return (
               <div
                 key={`line-${visit.id}`}
@@ -999,18 +996,14 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartCh
                   left: monthToX(sliderPos),
                   top: 0,
                   bottom: 0,
-                  width: 2,
+                  width: lineWidth,
                   backgroundColor: lineColor,
-                  boxShadow: `0 0 0 1px rgba(${
-                    isActive
-                      ? "16,185,129"
-                      : isSaved
-                        ? "59,130,246"
-                        : "156,163,175"
-                  },0.25)`,
+                  boxShadow: isSaved
+                    ? "0 0 0 1px rgba(0,0,0,0.3)"
+                    : "0 0 0 1px rgba(239,68,68,0.25)",
                   zIndex: isActive ? 7 : isSaved ? 5 : 3,
                   pointerEvents: "none",
-                  opacity: isActive || isSaved ? 0.7 : 0.4,
+                  opacity: isActive || isSaved ? 1 : 0.5,
                 }}
               />
             );
@@ -1042,11 +1035,8 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartCh
             const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
             const isActive = activeVisitId === visit.id;
             const isSaved = savedVisitIds.has(visit.id);
-            const lineColor = isActive
-              ? "#10b981"
-              : isSaved
-                ? "#3b82f6"
-                : "#9ca3af";
+            const isDraggingThis = isDragging && draggingVisitId === visit.id;
+            const lineColor = (isSaved && !isDraggingThis) ? "#111827" : "#ef4444";
             return (
               <div
                 key={`axis-line-${visit.id}`}
@@ -1055,11 +1045,11 @@ export default function TDSCChart36({ patientName, items = TDSC_ITEMS, onChartCh
                   left: monthToX(sliderPos),
                   top: 0,
                   bottom: 0,
-                  width: 2,
+                  width: (isSaved && !isDraggingThis) ? 3 : 2,
                   backgroundColor: lineColor,
                   zIndex: isActive ? 7 : isSaved ? 5 : 3,
                   pointerEvents: "none",
-                  opacity: isActive || isSaved ? 0.7 : 0.4,
+                  opacity: isActive || isSaved ? 1 : 0.5,
                 }}
               />
             );

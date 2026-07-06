@@ -168,8 +168,8 @@ async function downloadAuditPdf(
 
   // ── Column grid: explicit widths that sum exactly to contentW, so the
   // table fills edge-to-edge with no gaps or overlap ─────────────────────
-  const colWidths = [55, 130, 90, 105, contentW - (55 + 130 + 90 + 105)];
-  const colLabels = ["# Entry", "Age / Date", "Weight", "Length / Height", "Head Circumference"];
+  const colWidths = [40, 85, 85, 80, 100, contentW - (40 + 85 + 85 + 80 + 100)];
+  const colLabels = ["#", "Chron. Age", "Corrected Age", "Weight", "Length", "Head Circ."];
   const cellPad = 6;
   const colX: number[] = [];
   colWidths.reduce((acc, w, i) => { colX[i] = acc; return acc + w; }, marginX);
@@ -210,6 +210,7 @@ async function downloadAuditPdf(
       }
       const row = [
         String(i + 1),
+        chronologicalAge(p.dob ?? dob, p.visitDate),
         p.label ?? formatWeekLabel(p.week),
         p.weight != null ? `${p.weight.toFixed(2)} kg` : "\u2014",
         p.height != null ? `${p.height.toFixed(1)} cm` : "\u2014",
@@ -278,6 +279,26 @@ interface PatientPoint {
   weight: number | null;
   headCirc: number | null;
   label?: string;
+  /** ISO date string of the original visit — used to compute chronological age */
+  visitDate?: string;
+  /** Patient DOB (ISO) — passed through so audit rows can compute chron age */
+  dob?: string;
+}
+
+/** Returns postnatal (chronological) age as a readable string, e.g. "3w 2d", "4m 1w" */
+function chronologicalAge(dob: string | undefined, visitDate: string | undefined): string {
+  if (!dob || !visitDate) return "—";
+  const totalDays = Math.round(
+    (new Date(visitDate).getTime() - new Date(dob).getTime()) / (24 * 3600 * 1000)
+  );
+  if (totalDays < 0) return "—";
+  if (totalDays < 7)  return `${totalDays}d`;
+  const weeks = Math.floor(totalDays / 7);
+  const days  = totalDays % 7;
+  if (weeks < 13) return days > 0 ? `${weeks}w ${days}d` : `${weeks}w`;
+  const months = Math.floor(totalDays / 30.44);
+  const remWeeks = Math.floor(Math.round(totalDays - months * 30.44) / 7);
+  return remWeeks > 0 ? `${months}m ${remWeeks}w` : `${months}m`;
 }
 
 interface WHOChartMiniProps {
@@ -307,9 +328,9 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
     const factor = 1 + (weeksPast / 250) * 0.7;
     return {
       p3:  parseFloat((maxPt.p3  * factor).toFixed(2)),
-      p15: parseFloat((maxPt.p15 * factor).toFixed(2)),
+      p10: parseFloat((maxPt.p10 * factor).toFixed(2)),
       p50: parseFloat((maxPt.p50 * factor).toFixed(2)),
-      p85: parseFloat((maxPt.p85 * factor).toFixed(2)),
+      p90: parseFloat((maxPt.p90 * factor).toFixed(2)),
       p97: parseFloat((maxPt.p97 * factor).toFixed(2)),
     };
   }
@@ -317,7 +338,7 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
   const hi = sorted.find((d) => d.x > x)!;
   const t = (x - lo.x) / (hi.x - lo.x);
   const l = (a: number, b: number) => parseFloat((a + t * (b - a)).toFixed(2));
-  return { p3: l(lo.p3, hi.p3), p15: l(lo.p15, hi.p15), p50: l(lo.p50, hi.p50), p85: l(lo.p85, hi.p85), p97: l(lo.p97, hi.p97) };
+  return { p3: l(lo.p3, hi.p3), p10: l(lo.p10, hi.p10), p50: l(lo.p50, hi.p50), p90: l(lo.p90, hi.p90), p97: l(lo.p97, hi.p97) };
 }
 
 function formatWeekLabel(week: number) {
@@ -335,8 +356,8 @@ function ceilTo(v: number, step: number) {
 }
 
 const PERCENTILE_COLORS = ["#22d3ee", "#34d399", "#3b82f6", "#f59e0b", "#f43f5e"];
-const PCTS = ["3rd", "15th", "50th", "85th", "97th"] as const;
-const PERCENTILE_KEYS = ["p3", "p15", "p50", "p85", "p97"] as const;
+const PCTS = ["3rd", "10th", "50th", "90th", "97th"] as const;
+const PERCENTILE_KEYS = ["p3", "p10", "p50", "p90", "p97"] as const;
 const PATIENT_COLOR = "#111827";
 
 function getRefData(metric: Metric, isMale: boolean): RefPoint[] {
@@ -851,7 +872,8 @@ export default function WHOChartMini({ gender, patientData, allPatientData, heig
             <thead>
               <tr style={styles.thRow}>
                 <th style={styles.th}># Entry</th>
-                <th style={styles.th}>Age / Date</th>
+                <th style={styles.th}>Chron. Age</th>
+                <th style={styles.th}>Corrected Age (CGA)</th>
                 <th style={styles.th}>Weight</th>
                 <th style={styles.th}>Length / Height</th>
                 <th style={styles.th}>Head Circumference</th>
@@ -870,7 +892,16 @@ export default function WHOChartMini({ gender, patientData, allPatientData, heig
                   .map((p, i) => (
                     <tr key={i} style={styles.tr}>
                       <td style={styles.td}><strong>{i + 1}</strong></td>
-                      <td style={styles.td}>{p.label ?? formatWeekLabel(p.week)}</td>
+                      <td style={styles.td}>
+                        <span style={{ fontWeight: 600, color: "#0f172a" }}>
+                          {chronologicalAge(p.dob ?? auditData.find(x => x.visitDate)?.dob, p.visitDate)}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ fontWeight: 600, color: "#2563eb" }}>
+                          {p.label ?? formatWeekLabel(p.week)}
+                        </span>
+                      </td>
                       <td style={styles.td}>
                         {p.weight != null ? `${p.weight.toFixed(2)} kg` : <span style={styles.empty}>—</span>}
                       </td>

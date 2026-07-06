@@ -5,9 +5,9 @@ import { describe, it, expect } from "vitest";
 interface RefPoint {
   x: number;
   p3: number;
-  p15: number;
+  p10: number;
   p50: number;
-  p85: number;
+  p90: number;
   p97: number;
 }
 
@@ -24,9 +24,9 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
   const lerp = (a: number, b: number) => parseFloat((a + t * (b - a)).toFixed(2));
   return {
     p3:  lerp(lo.p3,  hi.p3),
-    p15: lerp(lo.p15, hi.p15),
+    p10: lerp(lo.p10, hi.p10),
     p50: lerp(lo.p50, hi.p50),
-    p85: lerp(lo.p85, hi.p85),
+    p90: lerp(lo.p90, hi.p90),
     p97: lerp(lo.p97, hi.p97),
   };
 }
@@ -46,12 +46,12 @@ function cgaWeekDisplay(dob: string, gaAtBirth: string, visitDate: string): stri
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const TWO_POINTS: RefPoint[] = [
-  { x: 28, p3: 0.90, p15: 1.04, p50: 1.19, p85: 1.38, p97: 1.58 },
-  { x: 30, p3: 1.15, p15: 1.34, p50: 1.53, p85: 1.76, p97: 2.03 },
+  { x: 28, p3: 0.90, p10: 1.04, p50: 1.19, p90: 1.38, p97: 1.58 },
+  { x: 30, p3: 1.15, p10: 1.34, p50: 1.53, p90: 1.76, p97: 2.03 },
 ];
 
 const SINGLE_POINT: RefPoint[] = [
-  { x: 32, p3: 1.45, p15: 1.69, p50: 1.94, p85: 2.24, p97: 2.58 },
+  { x: 32, p3: 1.45, p10: 1.69, p50: 1.94, p90: 2.24, p97: 2.58 },
 ];
 
 // ─── interpolate ──────────────────────────────────────────────────────────────
@@ -97,12 +97,12 @@ describe("interpolate", () => {
     expect(r.p50).toBeCloseTo(1.36, 2);
   });
 
-  it("p15 and p85 exist on result (not p10/p90)", () => {
+  it("p10 and p90 exist on result (not p15/p85)", () => {
     const r = interpolate(TWO_POINTS, 29) as any;
-    expect(r.p15).toBeDefined();
-    expect(r.p85).toBeDefined();
-    expect(r.p10).toBeUndefined();
-    expect(r.p90).toBeUndefined();
+    expect(r.p10).toBeDefined();
+    expect(r.p90).toBeDefined();
+    expect(r.p15).toBeUndefined();
+    expect(r.p85).toBeUndefined();
   });
 });
 

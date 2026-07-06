@@ -42,6 +42,8 @@ interface FentonChartProps {
   splitWeek: number;
   sidebarContent?: React.ReactNode;
   onSidebarOpen?: () => void;
+  /** CGA weeks at which a growth faltering alert should be drawn (arrow + label at chart top) */
+  alertWeeks?: { week: number; label: string; color: string }[];
 }
 
 type ExtendedDataset = ChartDataset<"line"> & { yAxisID?: string };
@@ -62,14 +64,14 @@ const X_MIN = 22;
 // visually overlaps the same vertical space as the lower portion of the
 // length/head-circumference curves (it is NOT a non-overlapping split chart).
 const Y_MIN = 0;
-const Y_MAX = 90; // top of printed chart = cm 60
+const Y_MAX = 100; // raised from 90 — boys p97 length at 50w = 67.2 cm = 97.2 grid units
 
 const CM_RAW_MIN = 15;   // lowest cm gridline printed on the official chart
-const CM_RAW_MAX = 60;   // top of the official chart
+const CM_RAW_MAX = 70;   // raised from 60 — accommodates full boys/girls length range to 50w
 const WEIGHT_RAW_MAX = 6.5; // highest weight gridline printed (right axis ceiling)
 
 const REF_WEEKS = [22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50] as const;
-const PERCENTILES = ["p3", "p15", "p50", "p85", "p97"] as const;
+const PERCENTILES = ["p3", "p10", "p50", "p90", "p97"] as const;
 
 const PATIENT_DATASET_LABELS = ["Patient Length", "Patient Head Circumference", "Patient Weight"];
 
@@ -145,7 +147,7 @@ function interpolateRef(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null
   const hi = sorted.find(d => d.x > x)!;
   const t = (x - lo.x) / (hi.x - lo.x);
   const lerp = (a: number, b: number) => a + t * (b - a);
-  return { p3: lerp(lo.p3, hi.p3), p15: lerp(lo.p15, hi.p15), p50: lerp(lo.p50, hi.p50), p85: lerp(lo.p85, hi.p85), p97: lerp(lo.p97, hi.p97) };
+  return { p3: lerp(lo.p3, hi.p3), p10: lerp(lo.p10, hi.p10), p50: lerp(lo.p50, hi.p50), p90: lerp(lo.p90, hi.p90), p97: lerp(lo.p97, hi.p97) };
 }
 
 function buildSeries(refData: RefPoint[], label: string): ExtendedDataset[] {
@@ -252,7 +254,7 @@ const fentonBackgroundPlugin = {
     ctx.restore();
 
     const weightLabelPixel = scales.y.getPixelForValue(20); // mid of weight-only zone (Y 0-45)
-    const cmLabelPixel = scales.y.getPixelForValue(77.5);   // mid of cm-only zone (Y 65-90)
+    const cmLabelPixel = scales.y.getPixelForValue(72.5);   // mid of cm zone (Y 45-100)
 
     ctx.save();
     ctx.font = "bold 11px system-ui, sans-serif";
@@ -263,7 +265,7 @@ const fentonBackgroundPlugin = {
     });
     ctx.restore();
 
-    const PERCENTILE_LABELS = ["3", "15", "50", "85", "97"];
+    const PERCENTILE_LABELS = ["3", "10", "50", "90", "97"];
     const SERIES_CONFIG = [
       { prefix: "Length", nameAtX: 30, percAtX: 42 },
       { prefix: "Head Circumference", nameAtX: 45, percAtX: 47 },
@@ -329,6 +331,71 @@ const fentonBackgroundPlugin = {
               "bold 11px system-ui, sans-serif", seriesColor, -(r + 28));
           }
         }
+      });
+    });
+
+    // ── Alert arrows: drawn for datasets prefixed "Alert:" ───────────────────
+    chart.data.datasets.forEach((ds: any) => {
+      if (!ds.label?.startsWith("Alert:")) return;
+      const label = ds.label.replace("Alert:", "");
+      const color = ds.borderColor ?? "#dc2626";
+      const pts = ds.data as Array<{ x: number; y: number }>;
+      if (!pts?.length) return;
+
+      pts.forEach((pt) => {
+        if (pt.x < scales.x.min || pt.x > scales.x.max) return;
+        const px       = scales.x.getPixelForValue(pt.x);
+        const headSize = 6;
+        const arrowTip = top + 8;
+        const shaftEnd = arrowTip - headSize;
+        const shaftTop = top - 8;
+
+        // Shaft
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth   = 2;
+        ctx.lineCap     = "round";
+        ctx.beginPath();
+        ctx.moveTo(px, shaftTop);
+        ctx.lineTo(px, shaftEnd);
+        ctx.stroke();
+
+        // Arrowhead
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(px,            arrowTip);
+        ctx.lineTo(px - headSize, shaftEnd);
+        ctx.lineTo(px + headSize, shaftEnd);
+        ctx.closePath();
+        ctx.fill();
+
+        // Label pill
+        ctx.font         = "bold 9px system-ui, sans-serif";
+        ctx.textAlign    = "center";
+        ctx.textBaseline = "middle";
+        const tw = ctx.measureText(label).width + 8;
+        const th = 13;
+        const ly = shaftTop - th / 2 - 2;
+        const rx = px - tw / 2;
+        const ry = ly - th / 2;
+        const rad = 3;
+
+        ctx.fillStyle = "rgba(255,255,255,0.95)";
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(rx, ry, tw, th, rad);
+        else ctx.rect(rx, ry, tw, th);
+        ctx.fill();
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth   = 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(rx, ry, tw, th, rad);
+        else ctx.rect(rx, ry, tw, th);
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.fillText(label, px, ly);
+        ctx.restore();
       });
     });
 
@@ -417,8 +484,107 @@ if (typeof document !== "undefined" && !document.getElementById("fenton-pdf-spin
   document.head.appendChild(st);
 }
 
+// ─── Alert Arrow Plugin ───────────────────────────────────────────────────────
+// Draws a small downward arrow + short label at the very top of the chart
+// above each CGA week that has a growth faltering alert.
+function buildAlertArrowPlugin(alertWeeks: FentonChartProps["alertWeeks"]) {
+  return {
+    id: `fentonAlertArrows-${Date.now()}`,
+    afterDraw(chart: any) {
+      if (!alertWeeks?.length) return;
+      const { ctx, scales, chartArea } = chart;
+      if (!ctx || !scales?.x) return;
+      const { top } = chartArea;
+
+      ctx.save();
+      // Expand the clip to include the padding band above chartArea.top
+      // so the arrow shaft and label pill are visible
+      ctx.beginPath();
+      ctx.rect(chartArea.left, 0, chartArea.right - chartArea.left, chartArea.bottom);
+      ctx.clip();
+
+      // Group by week key so multiple metrics at the same visit stack side-by-side
+      const byWeek = new Map<string, NonNullable<typeof alertWeeks>>();
+      for (const a of alertWeeks) {
+        const key = a.week.toFixed(1);
+        if (!byWeek.has(key)) byWeek.set(key, []);
+        byWeek.get(key)!.push(a);
+      }
+
+      byWeek.forEach((entries, _key) => {
+        const week = entries[0].week;
+        if (week < scales.x.min || week > scales.x.max) return;
+        const centerPx = scales.x.getPixelForValue(week);
+
+        const count      = entries.length;
+        const spacing    = 16;
+        const totalSpan  = (count - 1) * spacing;
+        const startX     = centerPx - totalSpan / 2;
+
+        entries.forEach(({ label, color }, idx) => {
+          const px       = startX + idx * spacing;
+          const headSize = 6;
+          const arrowTip = top + 8;          // tip lands just inside the chart area
+          const shaftEnd = arrowTip - headSize;
+          const shaftTop = top - 8;          // tighter — label sits just above chart border
+
+          // Shaft
+          ctx.strokeStyle = color;
+          ctx.lineWidth   = 2;
+          ctx.lineCap     = "round";
+          ctx.beginPath();
+          ctx.moveTo(px, shaftTop);
+          ctx.lineTo(px, shaftEnd);
+          ctx.stroke();
+
+          // Arrowhead (solid downward triangle)
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(px,              arrowTip);
+          ctx.lineTo(px - headSize,   shaftEnd);
+          ctx.lineTo(px + headSize,   shaftEnd);
+          ctx.closePath();
+          ctx.fill();
+
+          // Label pill above the shaft tail
+          ctx.font         = "bold 9px system-ui, sans-serif";
+          ctx.textAlign    = "center";
+          ctx.textBaseline = "middle";
+          const tw  = ctx.measureText(label).width + 8;
+          const th  = 13;
+          const ly  = shaftTop - th / 2 - 2;
+          const rx  = px - tw / 2;
+          const ry  = ly - th / 2;
+          const rad = 3;
+
+          // White fill
+          ctx.fillStyle = "rgba(255,255,255,0.95)";
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(rx, ry, tw, th, rad);
+          else ctx.rect(rx, ry, tw, th);
+          ctx.fill();
+
+          // Coloured border
+          ctx.strokeStyle = color;
+          ctx.lineWidth   = 1;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(rx, ry, tw, th, rad);
+          else ctx.rect(rx, ry, tw, th);
+          ctx.stroke();
+
+          // Label text
+          ctx.fillStyle = color;
+          ctx.fillText(label, px, ly);
+        });
+      });
+
+      ctx.restore();
+    },
+  };
+}
+
 // ─── Main FentonChart component ───────────────────────────────────────────────
-export default function FentonChart({ gender, patientData, sidebarContent, onSidebarOpen }: FentonChartProps) {
+export default function FentonChart({ gender, patientData, sidebarContent, onSidebarOpen, alertWeeks }: FentonChartProps) {
   if (gender === "") {
     console.warn("[FentonChart] gender prop is empty.");
   }
@@ -499,8 +665,26 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
       ...buildSeries(wRef, "Weight"),
     ].map(ds => ({ ...ds, order: 10 }));
 
-    return [...refSeries, patientLength, patientHead, patientWeight, rightAxisHelper];
-  }, [gender, patientData]);
+    // Alert marker datasets — one per alert entry, rendered as a single point
+    // at y = Y_MAX so it sits at the very top of the chart area.
+    // The actual arrow + label is drawn by the background plugin which reads
+    // dataset label prefix "Alert:" to identify these.
+    const alertDatasets: ExtendedDataset[] = (alertWeeks ?? []).map(({ week, label, color }) => ({
+      label: `Alert:${label}`,
+      data: [{ x: week, y: Y_MAX }] as { x: number; y: number }[],
+      borderColor: color,
+      backgroundColor: color,
+      borderWidth: 0,
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      showLine: false,
+      fill: false,
+      order: -1,
+      tension: 0,
+    } as unknown as ExtendedDataset));
+
+    return [...refSeries, patientLength, patientHead, patientWeight, rightAxisHelper, ...alertDatasets];
+  }, [gender, patientData, alertWeeks]);
 
   const data: ChartData<"line"> = useMemo(() => ({ datasets: datasets as ChartDataset<"line">[] }), [datasets]);
 
@@ -524,7 +708,7 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
         }
       },
     },
-    layout: { padding: { left: 70, right: 100, top: 24, bottom: 10 } },
+    layout: { padding: { left: 70, right: 100, top: 32, bottom: 10 } },
     scales: {
       x: {
         type: "linear", 

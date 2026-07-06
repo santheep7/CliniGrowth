@@ -58,7 +58,7 @@ const WEIGHT_RAW_MAX = 10;
 const CM_RAW_MIN = 15;
 const CM_RAW_MAX = 85;
 
-const PERCENTILES = ["p3", "p15", "p50", "p85", "p97"] as const;
+const PERCENTILES = ["p3", "p10", "p50", "p90", "p97"] as const;
 
 function mapWeightValue(value: number) {
   return (value / WEIGHT_RAW_MAX) * WEIGHT_BAND_MAX;
@@ -95,9 +95,9 @@ function interpolateRef(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null
   const lerp = (a: number, b: number) => a + t * (b - a);
   return {
     p3: lerp(lo.p3, hi.p3),
-    p15: lerp(lo.p15, hi.p15),
+    p10: lerp(lo.p10, hi.p10),
     p50: lerp(lo.p50, hi.p50),
-    p85: lerp(lo.p85, hi.p85),
+    p90: lerp(lo.p90, hi.p90),
     p97: lerp(lo.p97, hi.p97),
   };
 }

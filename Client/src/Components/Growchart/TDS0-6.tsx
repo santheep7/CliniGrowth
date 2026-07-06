@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useCallback, useEffect } from "react";
 import { useGrowchart } from "./GrowchartContext";
-
+import { gsap } from "gsap";
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface TDSCItem {
   id: number;
@@ -30,33 +30,33 @@ const JSPDF_SRC = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.
 
 // 0-3 Years Items
 const TDSC_ITEMS_03: TDSCItem[] = [
-  { id: 1,  label: "Social smile",                                            startMonth: 1,  endMonth: 2, chart: "0-3" },
-  { id: 2,  label: "Eyes follow pen/pencil",                                  startMonth: 1,  endMonth: 3, chart: "0-3" },
-  { id: 3,  label: "Hold head steady",                                        startMonth: 2,  endMonth: 4, chart: "0-3" },
-  { id: 4,  label: "Rolls from back to stomach",                              startMonth: 3,  endMonth: 6, chart: "0-3" },
-  { id: 5,  label: "Turns head to sound of bell/rattle",                      startMonth: 4,  endMonth: 7, chart: "0-3" },
-  { id: 6,  label: "Transfers objects hand to hand",                         startMonth: 5,  endMonth: 9, chart: "0-3" },
-  { id: 7,  label: "Raises self to sitting position",                        startMonth: 6,  endMonth: 9, chart: "0-3" },
-  { id: 8,  label: "Standing up by furniture",                               startMonth: 6,  endMonth: 10, chart: "0-3" },
-  { id: 9,  label: "Fine prehension pellet",                                 startMonth: 7,  endMonth: 10, chart: "0-3" },
-  { id: 10, label: "Pat a cake",                                             startMonth: 8,  endMonth: 11, chart: "0-3" },
-  { id: 11, label: "Walks with help",                                        startMonth: 9,  endMonth: 13, chart: "0-3" },
-  { id: 12, label: "Throws ball",                                            startMonth: 11, endMonth: 16, chart: "0-3" },
-  { id: 13, label: "Walks alone",                                            startMonth: 12, endMonth: 17, chart: "0-3" },
-  { id: 14, label: "Says two words",                                         startMonth: 12, endMonth: 18, chart: "0-3" },
-  { id: 15, label: "Walks backwards",                                        startMonth: 13, endMonth: 19, chart: "0-3" },
-  { id: 16, label: "Walks upstairs with help",                               startMonth: 15, endMonth: 23, chart: "0-3" },
-  { id: 17, label: "Points to parts of doll (3 parts)",                      startMonth: 16, endMonth: 23, chart: "0-3" },
-  { id: 18, label: "Removes garments",                                       startMonth: 18, endMonth: 24, chart: "0-3" },
-  { id: 19, label: "Uses words for personal needs",                          startMonth: 19, endMonth: 24, chart: "0-3" },
-  { id: 20, label: "Jumps in place",                                         startMonth: 20, endMonth: 24, chart: "0-3" },
-  { id: 21, label: "Differentiates big & small",                             startMonth: 20, endMonth: 24, chart: "0-3" },
-  { id: 22, label: "Points to 7 common objects",                             startMonth: 21, endMonth: 25, chart: "0-3" },
-  { id: 23, label: "Brush teeth with help",                                  startMonth: 21, endMonth: 25, chart: "0-3" },
-  { id: 24, label: "Tells gender when asked",                                startMonth: 22, endMonth: 26, chart: "0-3" },
-  { id: 25, label: "On instruction places objects 'IN', 'ON', & 'UNDER'",    startMonth: 23, endMonth: 27, chart: "0-3" },
-  { id: 26, label: "Asks simple questions",                                  startMonth: 24, endMonth: 34, chart: "0-3" },
-  { id: 27, label: "Answers at least half understandable to others",         startMonth: 25, endMonth: 35, chart: "0-3" },
+  { id: 1,  label: "Social smile",                                            startMonth: 1,    endMonth: 2,    chart: "0-3" },
+  { id: 2,  label: "Eyes follow pen/pencil",                                  startMonth: 1,    endMonth: 3,    chart: "0-3" },
+  { id: 3,  label: "Hold head steady",                                        startMonth: 1,    endMonth: 4,    chart: "0-3" },
+  { id: 4,  label: "Rolls from back to stomach",                              startMonth: 3,    endMonth: 5,    chart: "0-3" },
+  { id: 5,  label: "Turns head to sound of bell/rattle",                      startMonth: 3,    endMonth: 6,    chart: "0-3" },
+  { id: 6,  label: "Transfers objects hand to hand",                         startMonth: 4,    endMonth: 7,    chart: "0-3" },
+  { id: 7,  label: "Raises self to sitting position",                        startMonth: 6,    endMonth: 11,   chart: "0-3" },
+  { id: 8,  label: "Standing up by furniture",                               startMonth: 7.5,  endMonth: 11,   chart: "0-3" },
+  { id: 9,  label: "Fine prehension pellet",                                 startMonth: 7,    endMonth: 11,   chart: "0-3" },
+  { id: 10, label: "Pat a cake",                                             startMonth: 7,    endMonth: 13,   chart: "0-3" },
+  { id: 11, label: "Walks with help",                                        startMonth: 8,    endMonth: 13,   chart: "0-3" },
+  { id: 12, label: "Throws ball",                                            startMonth: 10,   endMonth: 17,   chart: "0-3" },
+  { id: 13, label: "Walks alone",                                            startMonth: 10,   endMonth: 17,   chart: "0-3" },
+  { id: 14, label: "Says two words",                                         startMonth: 11,   endMonth: 19,   chart: "0-3" },
+  { id: 15, label: "Walks backwards",                                        startMonth: 11,   endMonth: 20.5, chart: "0-3" },
+  { id: 16, label: "Walks upstairs with help",                               startMonth: 12,   endMonth: 25.5, chart: "0-3" },
+  { id: 17, label: "Points to parts of doll (3 parts)",                      startMonth: 15,   endMonth: 25.5, chart: "0-3" },
+  { id: 18, label: "Removes garments",                                       startMonth: 21,   endMonth: 25,   chart: "0-3" },
+  { id: 19, label: "Uses words for personal needs",                          startMonth: 24,   endMonth: 27,   chart: "0-3" },
+  { id: 20, label: "Jumps in place",                                         startMonth: 26,   endMonth: 29,   chart: "0-3" },
+  { id: 21, label: "Differentiates big & small",                             startMonth: 27,   endMonth: 30,   chart: "0-3" },
+  { id: 22, label: "Points to 7 common objects",                             startMonth: 26,   endMonth: 31,   chart: "0-3" },
+  { id: 23, label: "Brush teeth with help",                                  startMonth: 23,   endMonth: 32,   chart: "0-3" },
+  { id: 24, label: "Tells gender when asked",                                startMonth: 30,   endMonth: 33,   chart: "0-3" },
+  { id: 25, label: "On instruction places objects 'IN', 'ON', & 'UNDER'",    startMonth: 23,   endMonth: 35,   chart: "0-3" },
+  { id: 26, label: "Asks simple questions",                                  startMonth: 33,   endMonth: 36,   chart: "0-3" },
+  { id: 27, label: "Answers at least half understandable to others",         startMonth: 30,   endMonth: 36,   chart: "0-3" },
 ];
 
 // 3-6 Years Items
@@ -297,6 +297,7 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
   const [isDragging, setIsDragging] = useState(false);
   const [draggingVisitId, setDraggingVisitId] = useState<string | null>(null);
   const sliderTrackRef = useRef<HTMLDivElement>(null);
+  const sliderBtnRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const monthFromClientX = useCallback((clientX: number) => {
     const el = sliderTrackRef.current;
@@ -320,6 +321,8 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
     setActiveVisitId(visitId);
     setDraggingVisitId(visitId);
     setIsDragging(true);
+    const btn = sliderBtnRefs.current[visitId];
+    if (btn) gsap.to(btn, { scaleX: 1.25, scaleY: 0.88, duration: 0.18, ease: "back.out(2)" });
   };
 
   const handleSliderButtonMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -329,11 +332,13 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
   };
 
   const handleSliderButtonUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (draggingVisitId) {
+      const btn = sliderBtnRefs.current[draggingVisitId];
+      if (btn) gsap.to(btn, { scaleX: 1, scaleY: 1, duration: 0.32, ease: "elastic.out(1.2, 0.5)" });
+    }
     setIsDragging(false);
     setDraggingVisitId(null);
-    try {
-      (e.target as Element).releasePointerCapture(e.pointerId);
-    } catch {}
+    try { (e.target as Element).releasePointerCapture(e.pointerId); } catch {}
   };
 
   const exportRef = useRef<HTMLDivElement>(null);
@@ -593,15 +598,6 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
               </select>
             </div>
 
-            <div style={s.ageReadoutCompact}>
-              <label style={s.ageReadoutLabel}>Age:</label>
-              <div style={s.ageReadoutValue}>
-                {activeVisitId
-                  ? `${sliderPositions[activeVisitId] ?? AGE_MIN} months`
-                  : "—"}
-              </div>
-            </div>
-
             {activeVisitId && (
               <button
                 type="button"
@@ -769,7 +765,7 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
                   year: "2-digit",
                 })
               : "No date";
-            const buttonColor = isActive ? "#10b981" : isSaved ? "#3b82f6" : "#64748b";
+            const buttonColor = (isSaved && !isDraggingThis) ? "#111827" : "#ef4444";
 
             return (
               <div
@@ -783,19 +779,22 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
                 }}
               >
                 <div
+                  ref={el => { sliderBtnRefs.current[visit.id] = el; }}
                   onPointerDown={(e) => handleSliderButtonDown(e, visit.id)}
                   onPointerMove={handleSliderButtonMove}
                   onPointerUp={handleSliderButtonUp}
                   onPointerCancel={handleSliderButtonUp}
                   title={`${visitDate} · ${sliderPos} months`}
                   style={{
-                    ...s.triangleButton,
-                    borderBottomColor: buttonColor,
-                    cursor:
-                      isDraggingThis ? "grabbing" : "grab",
+                    width: 22,
+                    height: 36,
+                    borderRadius: 5,
+                    backgroundColor: buttonColor,
+                    boxShadow: isDraggingThis ? `0 4px 16px ${buttonColor}80` : `0 2px 6px ${buttonColor}60`,
+                    cursor: isDraggingThis ? "grabbing" : "grab",
                     pointerEvents: "auto",
-                    transform: isDraggingThis ? "scale(1.15)" : "scale(1)",
-                    filter: isDraggingThis ? `drop-shadow(0 0 4px ${buttonColor}80)` : "none",
+                    transformOrigin: "center center",
+                    backgroundImage: `repeating-linear-gradient(to bottom, transparent, transparent 4px, rgba(255,255,255,0.35) 4px, rgba(255,255,255,0.35) 5px)`,
                   }}
                 />
 
@@ -854,7 +853,7 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
           {orderedItems.map((item, idx) => {
             const uid = uidOf(item);
             const barLeft =
-              item.startMonth === AGE_MIN ? 0 : monthToX(item.startMonth);
+              item.chart === "0-3" && item.id === 1 ? 0 : monthToX(item.startMonth);
             const barWidth = Math.max(2, monthToX(item.endMonth) - barLeft);
             const labelAfterBar = item.endMonth < RIGHT_EDGE_CUTOFF;
 
@@ -991,11 +990,9 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
             const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
             const isActive = activeVisitId === visit.id;
             const isSaved = savedVisitIds.has(visit.id);
-            const lineColor = isActive
-              ? "#10b981"
-              : isSaved
-                ? "#3b82f6"
-                : "#9ca3af";
+            const isDraggingThis = isDragging && draggingVisitId === visit.id;
+            const lineColor = (isSaved && !isDraggingThis) ? "#111827" : "#ef4444";
+            const lineWidth = (isSaved && !isDraggingThis) ? 3 : 2;
             return (
               <div
                 key={`line-${visit.id}`}
@@ -1004,18 +1001,14 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
                   left: monthToX(sliderPos),
                   top: 0,
                   bottom: 0,
-                  width: 2,
+                  width: lineWidth,
                   backgroundColor: lineColor,
-                  boxShadow: `0 0 0 1px rgba(${
-                    isActive
-                      ? "16,185,129"
-                      : isSaved
-                        ? "59,130,246"
-                        : "156,163,175"
-                  },0.25)`,
+                  boxShadow: isSaved
+                    ? "0 0 0 1px rgba(0,0,0,0.3)"
+                    : "0 0 0 1px rgba(239,68,68,0.25)",
                   zIndex: isActive ? 7 : isSaved ? 5 : 3,
                   pointerEvents: "none",
-                  opacity: isActive || isSaved ? 0.7 : 0.4,
+                  opacity: isActive || isSaved ? 1 : 0.5,
                 }}
               />
             );
@@ -1053,11 +1046,8 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
             const sliderPos = sliderPositions[visit.id] ?? AGE_MIN;
             const isActive = activeVisitId === visit.id;
             const isSaved = savedVisitIds.has(visit.id);
-            const lineColor = isActive
-              ? "#10b981"
-              : isSaved
-                ? "#3b82f6"
-                : "#9ca3af";
+            const isDraggingThis = isDragging && draggingVisitId === visit.id;
+            const lineColor = (isSaved && !isDraggingThis) ? "#111827" : "#ef4444";
             return (
               <div
                 key={`axis-line-${visit.id}`}
@@ -1066,11 +1056,11 @@ export default function TDSCChart0to6({ patientName, onChartChange }: TDSCChartP
                   left: monthToX(sliderPos),
                   top: 0,
                   bottom: 0,
-                  width: 2,
+                  width: (isSaved && !isDraggingThis) ? 3 : 2,
                   backgroundColor: lineColor,
                   zIndex: isActive ? 7 : isSaved ? 5 : 3,
                   pointerEvents: "none",
-                  opacity: isActive || isSaved ? 0.7 : 0.4,
+                  opacity: isActive || isSaved ? 1 : 0.5,
                 }}
               />
             );

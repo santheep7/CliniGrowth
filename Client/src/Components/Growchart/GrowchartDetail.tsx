@@ -45,8 +45,8 @@ interface ChartPoint {
   week: number;
   weekLabel: string;
   patient: number | null;
-  boys: Record<"p3" | "p15" | "p50" | "p85" | "p97", number | null>;
-  girls: Record<"p3" | "p15" | "p50" | "p85" | "p97", number | null>;
+  boys: Record<"p3" | "p10" | "p50" | "p90" | "p97", number | null>;
+  girls: Record<"p3" | "p10" | "p50" | "p90" | "p97", number | null>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,9 +60,9 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
     const factor = 1 + (weeksPast / 250) * 0.7;
     return {
       p3:  parseFloat((maxPt.p3  * factor).toFixed(2)),
-      p15: parseFloat((maxPt.p15 * factor).toFixed(2)),
+      p10: parseFloat((maxPt.p10 * factor).toFixed(2)),
       p50: parseFloat((maxPt.p50 * factor).toFixed(2)),
-      p85: parseFloat((maxPt.p85 * factor).toFixed(2)),
+      p90: parseFloat((maxPt.p90 * factor).toFixed(2)),
       p97: parseFloat((maxPt.p97 * factor).toFixed(2)),
     };
   }
@@ -70,7 +70,7 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
   const hi = sorted.find(d => d.x > x)!;
   const t = (x - lo.x) / (hi.x - lo.x);
   const l = (a: number, b: number) => parseFloat((a + t * (b - a)).toFixed(2));
-  return { p3: l(lo.p3, hi.p3), p15: l(lo.p15, hi.p15), p50: l(lo.p50, hi.p50), p85: l(lo.p85, hi.p85), p97: l(lo.p97, hi.p97) };
+  return { p3: l(lo.p3, hi.p3), p10: l(lo.p10, hi.p10), p50: l(lo.p50, hi.p50), p90: l(lo.p90, hi.p90), p97: l(lo.p97, hi.p97) };
 }
 
 function cgaWeek(dob: string, gaAtBirth: number, visitDate: string): number {
@@ -78,6 +78,21 @@ function cgaWeek(dob: string, gaAtBirth: number, visitDate: string): number {
   const visitMs = new Date(visitDate).getTime();
   if (isNaN(dobMs) || isNaN(visitMs)) return gaAtBirth;
   return gaAtBirth + (visitMs - dobMs) / (7 * 24 * 3600 * 1000);
+}
+
+function chronologicalAge(dob: string, visitDate: string): string {
+  if (!dob || !visitDate) return "—";
+  const totalDays = Math.round(
+    (new Date(visitDate).getTime() - new Date(dob).getTime()) / (24 * 3600 * 1000)
+  );
+  if (totalDays < 0) return "—";
+  if (totalDays < 7)  return `${totalDays}d`;
+  const weeks = Math.floor(totalDays / 7);
+  const days  = totalDays % 7;
+  if (weeks < 13) return days > 0 ? `${weeks}w ${days}d` : `${weeks}w`;
+  const months = Math.floor(totalDays / 30.44);
+  const remWeeks = Math.floor(Math.round(totalDays - months * 30.44) / 7);
+  return remWeeks > 0 ? `${months}m ${remWeeks}w` : `${months}m`;
 }
 
 function formatDate(iso: string) {
@@ -132,8 +147,8 @@ function buildData(visits: Visit[], dob: string, gaAtBirth: number, metric: Metr
     }
     return {
       week: w, weekLabel: label, patient: null,
-      boys:  { p3: b?.p3 ?? null, p15: b?.p15 ?? null, p50: b?.p50 ?? null, p85: b?.p85 ?? null, p97: b?.p97 ?? null },
-      girls: { p3: g?.p3 ?? null, p15: g?.p15 ?? null, p50: g?.p50 ?? null, p85: g?.p85 ?? null, p97: g?.p97 ?? null },
+      boys:  { p3: b?.p3 ?? null, p10: b?.p10 ?? null, p50: b?.p50 ?? null, p90: b?.p90 ?? null, p97: b?.p97 ?? null },
+      girls: { p3: g?.p3 ?? null, p10: g?.p10 ?? null, p50: g?.p50 ?? null, p90: g?.p90 ?? null, p97: g?.p97 ?? null },
     };
   });
 
@@ -149,8 +164,8 @@ function buildData(visits: Visit[], dob: string, gaAtBirth: number, metric: Metr
       week: parseFloat(cga.toFixed(1)),
       weekLabel: `${tooltipLbl}\n${formatDate(v.date)}`,
       patient: raw ? parseFloat(raw) : null,
-      boys:  { p3: b?.p3 ?? null, p15: b?.p15 ?? null, p50: b?.p50 ?? null, p85: b?.p85 ?? null, p97: b?.p97 ?? null },
-      girls: { p3: g?.p3 ?? null, p15: g?.p15 ?? null, p50: g?.p50 ?? null, p85: g?.p85 ?? null, p97: g?.p97 ?? null },
+      boys:  { p3: b?.p3 ?? null, p10: b?.p10 ?? null, p50: b?.p50 ?? null, p90: b?.p90 ?? null, p97: b?.p97 ?? null },
+      girls: { p3: g?.p3 ?? null, p10: g?.p10 ?? null, p50: g?.p50 ?? null, p90: g?.p90 ?? null, p97: g?.p97 ?? null },
     };
     const idx = pts.findIndex(r => Math.abs(r.week - vp.week) < 0.5 && r.patient === null);
     if (idx >= 0) pts[idx] = { ...pts[idx], patient: vp.patient, weekLabel: vp.weekLabel };
@@ -165,12 +180,12 @@ const PERCENTILE_COLORS = ["#22d3ee", "#34d399", "#3b82f6", "#f59e0b", "#f43f5e"
 const BOYS_COLORS   = PERCENTILE_COLORS;
 const GIRLS_COLORS  = PERCENTILE_COLORS;
 const PATIENT_COLOR = "#111827";
-const PCTS = ["3rd", "15th", "50th", "85th", "97th"] as const;
+const PCTS = ["3rd", "10th", "50th", "90th", "97th"] as const;
 
 function buildSeries(data: ChartPoint[], genderView: GenderView) {
   const showBoys  = genderView === "both" || genderView === "male";
   const showGirls = genderView === "both" || genderView === "female";
-  const percentileKeys = ["p3", "p15", "p50", "p85", "p97"] as const;
+  const percentileKeys = ["p3", "p10", "p50", "p90", "p97"] as const;
   const datasets: Array<any> = [];
 
   if (showBoys) {
@@ -666,8 +681,17 @@ export default function GrowchartDetail() {
                         </div>
                         {cga !== null && (
                           <div style={s.field}>
-                            <label style={s.label}>Corrected GA (auto)</label>
-                            <div style={s.cgaDisplay}>{cga.toFixed(1)}w</div>
+                            <label style={s.label}>Age at Visit</label>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <div style={{ ...s.cgaDisplay, flex: 1 }}>
+                                <span style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 2 }}>Corrected (CGA)</span>
+                                {cga.toFixed(1)}w
+                              </div>
+                              <div style={{ ...s.cgaDisplay, flex: 1 }}>
+                                <span style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 2 }}>Chronological</span>
+                                {chronologicalAge(dob, visit.date)}
+                              </div>
+                            </div>
                           </div>
                         )}
                         <div style={s.row}>
@@ -854,7 +878,8 @@ export default function GrowchartDetail() {
                     <tr style={s.thRow}>
                       <th style={s.th}># Entry</th>
                       <th style={s.th}>Date</th>
-                      <th style={s.th}>Corrected Age</th>
+                      <th style={s.th}>Chron. Age</th>
+                      <th style={s.th}>Corrected Age (CGA)</th>
                       <th style={s.th}>Weight</th>
                       <th style={s.th}>Length / Height</th>
                       <th style={s.th}>Head Circumference</th>
@@ -867,7 +892,16 @@ export default function GrowchartDetail() {
                         <tr key={v.id} style={s.tr}>
                           <td style={s.td}><strong>{i + 1}</strong></td>
                           <td style={s.td}>{v.date ? formatDate(v.date) : <span style={s.empty}>—</span>}</td>
-                          <td style={s.td}>{cga ? `${cga.toFixed(1)} weeks` : <span style={s.empty}>—</span>}</td>
+                          <td style={s.td}>
+                            <span style={{ fontWeight: 600, color: "#0f172a" }}>
+                              {v.date ? chronologicalAge(dob, v.date) : <span style={s.empty}>—</span>}
+                            </span>
+                          </td>
+                          <td style={s.td}>
+                            <span style={{ fontWeight: 600, color: "#2563eb" }}>
+                              {cga ? `${cga.toFixed(1)}w CGA` : <span style={s.empty}>—</span>}
+                            </span>
+                          </td>
                           <td style={s.td}>{v.weight ? `${parseFloat(v.weight).toFixed(2)} kg` : <span style={s.empty}>—</span>}</td>
                           <td style={s.td}>{v.height ? `${parseFloat(v.height).toFixed(1)} cm` : <span style={s.empty}>—</span>}</td>
                           <td style={s.td}>{v.headCirc ? `${parseFloat(v.headCirc).toFixed(1)} cm` : <span style={s.empty}>—</span>}</td>
