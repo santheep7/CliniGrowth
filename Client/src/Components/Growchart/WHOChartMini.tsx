@@ -22,6 +22,8 @@ import {
   WHO_LENGTH_GIRLS,
   WHO_HC_BOYS,
   WHO_HC_GIRLS,
+  WHO_BMI_BOYS,
+  WHO_BMI_GIRLS,
   type RefPoint,
 } from "./referenceData";
 
@@ -227,6 +229,192 @@ async function downloadAuditPdf(
   pdf.save(filename);
 }
 
+// ─── CSV / Excel export helpers ────────────────────────────────────────────
+// Shared row-shaping logic so CSV and Excel export stay in sync with each
+// other (and with the PDF audit table above) if the schema ever changes.
+interface AuditExportRow {
+  entry: number;
+  chronAge: string;
+  correctedAge: string;
+  weightKg: number | null;
+  lengthCm: number | null;
+  headCircCm: number | null;
+  bmi: number | null;
+  visitDate: string;
+  weightGainGPerDay: number | null;
+  weightGainGPerKgPerDay: number | null;
+  lengthGainCmPerWeek: number | null;
+  headCircGainCmPerMonth: number | null;
+}
+
+// Exact calendar days between two ISO visit dates; null if either is
+// missing/invalid or the result isn't positive.
+function daysBetweenVisits(d1?: string, d2?: string): number | null {
+  if (!d1 || !d2) return null;
+  const days = Math.round((new Date(d2).getTime() - new Date(d1).getTime()) / (24 * 3600 * 1000));
+  return days > 0 ? days : null;
+}
+
+function buildAuditExportRows(auditRows: PatientPoint[], fallbackDob?: string): AuditExportRow[] {
+  const sorted = [...auditRows].sort((a, b) => a.week - b.week);
+
+  return sorted.map((p, i) => {
+    const prev = i > 0 ? sorted[i - 1] : null;
+    const days = prev
+      ? (daysBetweenVisits(prev.visitDate, p.visitDate) ?? Math.round((p.week - prev.week) * 7))
+      : null;
+
+    // Velocity vs. the immediately preceding visit. Weight g/kg/day uses the
+    // average of the two visit weights as the denominator (average-weight
+    // method), the standard approach for tracking preterm catch-up growth.
+    let weightGainGPerDay: number | null = null;
+    let weightGainGPerKgPerDay: number | null = null;
+    let lengthGainCmPerWeek: number | null = null;
+    let headCircGainCmPerMonth: number | null = null;
+
+    if (prev && days && days > 0) {
+      if (prev.weight != null && p.weight != null) {
+        const gainG = (p.weight - prev.weight) * 1000;
+        weightGainGPerDay = parseFloat((gainG / days).toFixed(1));
+        const avgWeightKg = (prev.weight + p.weight) / 2;
+        weightGainGPerKgPerDay = avgWeightKg > 0 ? parseFloat((gainG / days / avgWeightKg).toFixed(1)) : null;
+      }
+      if (prev.height != null && p.height != null) {
+        lengthGainCmPerWeek = parseFloat(((p.height - prev.height) / (days / 7)).toFixed(2));
+      }
+      if (prev.headCirc != null && p.headCirc != null) {
+        headCircGainCmPerMonth = parseFloat(((p.headCirc - prev.headCirc) / (days / 30.44)).toFixed(2));
+      }
+    }
+
+    return {
+      entry: i + 1,
+      chronAge: chronologicalAge(p.dob ?? fallbackDob, p.visitDate),
+      correctedAge: p.label ?? formatWeekLabel(p.week),
+      weightKg: p.weight ?? null,
+      lengthCm: p.height ?? null,
+      headCircCm: p.headCirc ?? null,
+      bmi: p.bmi ?? null,
+      visitDate: p.visitDate ?? "",
+      weightGainGPerDay,
+      weightGainGPerKgPerDay,
+      lengthGainCmPerWeek,
+      headCircGainCmPerMonth,
+    };
+  });
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Escapes a value for CSV: strips embedded newlines (e.g. from multi-line
+// week labels) and quotes anything containing a comma or quote character.
+function csvEscape(value: string | number | null | undefined): string {
+  if (value == null) return "";
+  const str = String(value).replace(/\r?\n/g, " ").trim();
+  if (str.includes(",") || str.includes('"')) return `"${str.replace(/"/g, '""')}"`;
+  return str;
+}
+
+function downloadAuditCsv(
+  filename: string,
+  auditRows: PatientPoint[],
+  patientName?: string,
+  dob?: string,
+  gaAtBirth?: string
+) {
+  const rows = buildAuditExportRows(auditRows, dob);
+
+  const headerLines: string[] = [];
+  if (patientName) headerLines.push(`Patient,${csvEscape(patientName)}`);
+  if (dob) headerLines.push(`DOB,${csvEscape(formatDobDisplay(dob))}`);
+  if (gaAtBirth) headerLines.push(`GA at birth,${gaAtBirth}w`);
+  if (headerLines.length) headerLines.push("");
+
+  const columns = [
+    "#", "Chron. Age", "Corrected Age (CGA)", "Weight (kg)", "Length/Height (cm)", "Head Circumference (cm)", "BMI (kg/m2)", "Visit Date",
+    "Weight Velocity (g/day)", "Weight Velocity (g/kg/day)", "Length Velocity (cm/wk)", "Head Circ. Velocity (cm/mo)",
+  ];
+
+  const lines = [
+    ...headerLines,
+    columns.join(","),
+    ...rows.map((r) => [
+      r.entry,
+      csvEscape(r.chronAge),
+      csvEscape(r.correctedAge),
+      r.weightKg != null ? r.weightKg.toFixed(2) : "",
+      r.lengthCm != null ? r.lengthCm.toFixed(1) : "",
+      r.headCircCm != null ? r.headCircCm.toFixed(1) : "",
+      r.bmi != null ? r.bmi.toFixed(2) : "",
+      csvEscape(r.visitDate),
+      r.weightGainGPerDay != null ? r.weightGainGPerDay.toFixed(1) : "",
+      r.weightGainGPerKgPerDay != null ? r.weightGainGPerKgPerDay.toFixed(1) : "",
+      r.lengthGainCmPerWeek != null ? r.lengthGainCmPerWeek.toFixed(2) : "",
+      r.headCircGainCmPerMonth != null ? r.headCircGainCmPerMonth.toFixed(2) : "",
+    ].join(",")),
+  ];
+
+  // Leading BOM so Excel opens the UTF-8 CSV without mangling special characters.
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  triggerBlobDownload(blob, filename);
+}
+
+async function downloadAuditXlsx(
+  filename: string,
+  auditRows: PatientPoint[],
+  patientName?: string,
+  dob?: string,
+  gaAtBirth?: string
+) {
+  const XLSX = await import("xlsx");
+  const rows = buildAuditExportRows(auditRows, dob);
+
+  const sheetRows: (string | number)[][] = [];
+  if (patientName) sheetRows.push(["Patient", patientName]);
+  if (dob) sheetRows.push(["DOB", formatDobDisplay(dob)]);
+  if (gaAtBirth) sheetRows.push(["GA at birth", `${gaAtBirth}w`]);
+  if (sheetRows.length) sheetRows.push([]);
+
+  sheetRows.push([
+    "#", "Chron. Age", "Corrected Age (CGA)", "Weight (kg)", "Length/Height (cm)", "Head Circumference (cm)", "BMI (kg/m2)", "Visit Date",
+    "Weight Velocity (g/day)", "Weight Velocity (g/kg/day)", "Length Velocity (cm/wk)", "Head Circ. Velocity (cm/mo)",
+  ]);
+  rows.forEach((r) => {
+    sheetRows.push([
+      r.entry,
+      r.chronAge,
+      r.correctedAge,
+      r.weightKg ?? "",
+      r.lengthCm ?? "",
+      r.headCircCm ?? "",
+      r.bmi ?? "",
+      r.visitDate,
+      r.weightGainGPerDay ?? "",
+      r.weightGainGPerKgPerDay ?? "",
+      r.lengthGainCmPerWeek ?? "",
+      r.headCircGainCmPerMonth ?? "",
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetRows);
+  ws["!cols"] = [
+    { wch: 6 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 18 }, { wch: 20 }, { wch: 12 }, { wch: 14 },
+    { wch: 20 }, { wch: 22 }, { wch: 18 }, { wch: 20 },
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Growth Data");
+  XLSX.writeFile(wb, filename);
+}
+
 function AuditPdfButton({
   auditRows, filename, patientName, dob, gaAtBirth,
 }: {
@@ -268,7 +456,78 @@ function AuditPdfButton({
   );
 }
 
-type Metric = "height" | "weight" | "headCirc";
+// Reusable text-link-style export button (used for CSV/Excel, matching the
+// PDF button's look) that runs an arbitrary async export function on click.
+function AuditExportLinkButton({ label, loadingLabel, onExport }: { label: string; loadingLabel: string; onExport: () => void | Promise<void> }) {
+  const [loading, setLoading] = React.useState(false);
+  async function handleClick() {
+    if (loading) return;
+    setLoading(true);
+    try { await onExport(); }
+    catch (err) { console.error(`${label} export failed:`, err); }
+    finally { setLoading(false); }
+  }
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      style={{
+        background: "none", border: "none", padding: 0,
+        color: loading ? "#94a3b8" : "#0f172a",
+        fontSize: 13, fontWeight: 700,
+        textDecoration: "underline", textUnderlineOffset: 3,
+        cursor: loading ? "not-allowed" : "pointer",
+        letterSpacing: "0.04em",
+        display: "inline-flex", alignItems: "center", gap: 5,
+      }}
+    >
+      {loading ? (
+        <>
+          <span style={{ display: "inline-block", width: 11, height: 11, border: "2px solid #94a3b8", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+          {loadingLabel}
+        </>
+      ) : label}
+    </button>
+  );
+}
+
+// Groups PDF (visual report), CSV, and Excel (raw data for audit/research)
+// export actions together above the audit table.
+function AuditExportButtons({
+  auditRows, baseFilename, patientName, dob, gaAtBirth,
+}: {
+  auditRows: PatientPoint[];
+  baseFilename: string;
+  patientName?: string;
+  dob?: string;
+  gaAtBirth?: string;
+}) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
+      <AuditPdfButton
+        auditRows={auditRows}
+        filename={`${baseFilename}.pdf`}
+        patientName={patientName}
+        dob={dob}
+        gaAtBirth={gaAtBirth}
+      />
+      <span style={{ width: 1, height: 14, backgroundColor: "#e2e8f0" }} aria-hidden="true" />
+      <AuditExportLinkButton
+        label="GET CSV"
+        loadingLabel="Exporting…"
+        onExport={() => downloadAuditCsv(`${baseFilename}.csv`, auditRows, patientName, dob, gaAtBirth)}
+      />
+      <span style={{ width: 1, height: 14, backgroundColor: "#e2e8f0" }} aria-hidden="true" />
+      <AuditExportLinkButton
+        label="GET EXCEL"
+        loadingLabel="Exporting…"
+        onExport={() => downloadAuditXlsx(`${baseFilename}.xlsx`, auditRows, patientName, dob, gaAtBirth)}
+      />
+    </div>
+  );
+}
+
+type Metric = "height" | "weight" | "headCirc" | "bmi";
 type GenderView = "both" | "male" | "female";
 type Gender = "male" | "female" | "";
 type MetricFilter = "all" | Metric;
@@ -278,10 +537,9 @@ interface PatientPoint {
   height: number | null;
   weight: number | null;
   headCirc: number | null;
+  bmi: number | null;
   label?: string;
-  /** ISO date string of the original visit — used to compute chronological age */
   visitDate?: string;
-  /** Patient DOB (ISO) — passed through so audit rows can compute chron age */
   dob?: string;
 }
 
@@ -363,6 +621,7 @@ const PATIENT_COLOR = "#111827";
 function getRefData(metric: Metric, isMale: boolean): RefPoint[] {
   if (metric === "height") return isMale ? WHO_LENGTH_BOYS  : WHO_LENGTH_GIRLS;
   if (metric === "weight") return isMale ? WHO_WEIGHT_BOYS  : WHO_WEIGHT_GIRLS;
+  if (metric === "bmi")    return isMale ? WHO_BMI_BOYS     : WHO_BMI_GIRLS;
   return isMale ? WHO_HC_BOYS : WHO_HC_GIRLS;
 }
 
@@ -417,10 +676,14 @@ function buildDatasets(
     .filter((p) => {
       if (metric === "height")   return p.height   != null;
       if (metric === "weight")   return p.weight   != null;
+      if (metric === "bmi")      return p.bmi      != null;
       return p.headCirc != null;
     })
     .map((p) => {
-      const y = metric === "height" ? p.height : metric === "weight" ? p.weight : p.headCirc;
+      const y = metric === "height" ? p.height
+              : metric === "weight" ? p.weight
+              : metric === "bmi"    ? p.bmi
+              : p.headCirc;
       return { x: p.week, y, label: p.label ?? formatWeekLabel(p.week) };
     });
 
@@ -510,14 +773,20 @@ function SingleMetricChart({
   height: number;
 }) {
   const chartWrapperRef = React.useRef<HTMLDivElement>(null);
-  const metricLabel = metric === "height" ? "length" : metric === "weight" ? "weight" : "head-circ";
+  const metricLabel =
+    metric === "height" ? "length" :
+    metric === "weight" ? "weight" :
+    metric === "bmi"    ? "bmi"    : "head-circ";
   const pdfFilename = `who-${metricLabel}-${genderView}.pdf`;
-  const metricTitle = metric === "height" ? "Length for Age" : metric === "weight" ? "Weight for Age" : "Head Circumference for Age";
+  const metricTitle =
+    metric === "height" ? "Length for Age" :
+    metric === "weight" ? "Weight for Age" :
+    metric === "bmi"    ? "BMI for Age"    : "Head Circumference for Age";
   const genderTitle = genderView === "male" ? "Boys" : genderView === "female" ? "Girls" : "Boys & Girls";
   const pdfHeading = `${metricTitle} · ${genderTitle}`;
-  const unitLabel     = metric === "weight" ? "kg" : "cm";
-  const yStep         = metric === "weight" ? 1 : 5;
-  const yMinResolved  = metric === "weight" ? 2 : metric === "height" ? 35 : 25;
+  const unitLabel     = metric === "weight" ? "kg" : metric === "bmi" ? "kg/m\u00B2" : "cm";
+  const yStep         = metric === "weight" ? 1 : metric === "bmi" ? 2 : 5;
+  const yMinResolved  = metric === "weight" ? 2 : metric === "height" ? 35 : metric === "bmi" ? 8 : 25;
 
   const xMax = useMemo(() => {
     const weeks = patientData.map((p) => p.week).filter(Number.isFinite);
@@ -745,6 +1014,7 @@ const METRIC_OPTIONS = [
   { key: "height"   as MetricFilter, label: "Length"     },
   { key: "weight"   as MetricFilter, label: "Weight"     },
   { key: "headCirc" as MetricFilter, label: "Head Circ." },
+  { key: "bmi"      as MetricFilter, label: "BMI"        },
 ] as const;
 
 export default function WHOChartMini({ gender, patientData, allPatientData, height = 420, patientName, dob, gaAtBirth }: WHOChartMiniProps) {
@@ -761,12 +1031,16 @@ export default function WHOChartMini({ gender, patientData, allPatientData, heig
 
   const hasData = (metric: Metric) =>
     patientData.some((p) =>
-      metric === "height" ? p.height != null : metric === "weight" ? p.weight != null : p.headCirc != null
+      metric === "height" ? p.height != null
+      : metric === "weight" ? p.weight != null
+      : metric === "bmi"    ? p.bmi != null
+      : p.headCirc != null
     );
 
   const showHeight   = (metricFilter === "all" || metricFilter === "height")   && hasData("height");
   const showWeight   = (metricFilter === "all" || metricFilter === "weight")   && hasData("weight");
   const showHeadCirc = (metricFilter === "all" || metricFilter === "headCirc") && hasData("headCirc");
+  const showBmi      = (metricFilter === "all" || metricFilter === "bmi")      && hasData("bmi");
 
   const renderChart = (metric: Metric, widthCap?: string) => (
     <div key={metric} style={{ flex: 1, minWidth: 0, maxWidth: widthCap }}>
@@ -784,6 +1058,9 @@ export default function WHOChartMini({ gender, patientData, allPatientData, heig
   const weightChart   = showWeight   ? renderChart("weight")   : null;
   const headCircChart = showHeadCirc
     ? renderChart("headCirc", metricFilter === "all" ? "50%" : undefined)
+    : null;
+  const bmiChart = showBmi
+    ? renderChart("bmi", metricFilter === "all" ? "50%" : undefined)
     : null;
 
   // Active style for gender buttons
@@ -838,11 +1115,16 @@ export default function WHOChartMini({ gender, patientData, allPatientData, heig
               {weightChart}
             </div>
           )}
-          {headCircChart && <div style={styles.rowCenter}>{headCircChart}</div>}
+          {(headCircChart || bmiChart) && (
+            <div style={styles.row}>
+              {headCircChart}
+              {bmiChart}
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ width: "100%" }}>
-          {heightChart || weightChart || headCircChart}
+          {heightChart || weightChart || headCircChart || bmiChart}
         </div>
       )}
 
@@ -850,9 +1132,9 @@ export default function WHOChartMini({ gender, patientData, allPatientData, heig
       <div style={styles.tableCard}>
         <div style={styles.chartHeader}>
           <h3 style={styles.chartTitle}>Historical Audit Logs Summary</h3>
-          <AuditPdfButton
+          <AuditExportButtons
             auditRows={auditData}
-            filename={`audit-history-${(patientName || "patient").toLowerCase().replace(/\s+/g, "-")}.pdf`}
+            baseFilename={`audit-history-${(patientName || "patient").toLowerCase().replace(/\s+/g, "-")}`}
             patientName={patientName}
             dob={dob}
             gaAtBirth={gaAtBirth}

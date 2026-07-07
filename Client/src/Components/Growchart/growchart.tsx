@@ -110,6 +110,13 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
   };
 }
 
+/** BMI = weight(kg) / height(m)^2. Returns null if either measurement is missing/invalid. */
+function computeBmi(weightKg: number | null, heightCm: number | null): number | null {
+  if (weightKg == null || heightCm == null || heightCm <= 0) return null;
+  const heightM = heightCm / 100;
+  return parseFloat((weightKg / (heightM * heightM)).toFixed(2));
+}
+
 function cgaWeek(dob: string, gaAtBirth: number, visitDate: string): number {
   const msPerWeek = 7 * 24 * 3600 * 1000;
   const postnatalWeeks = (new Date(visitDate).getTime() - new Date(dob).getTime()) / msPerWeek;
@@ -430,6 +437,160 @@ function GrowthFalteringAlerts({ chartData }: { chartData: ChartPoint[] }) {
     </div>
   );
 }
+interface VelocityEntry {
+  fromWeek: number;
+  toWeek: number;
+  fromDate?: string;
+  toDate?: string;
+  days: number;
+  weightGainGPerDay: number | null;
+  weightGainGPerKgPerDay: number | null;
+  lengthGainCmPerWeek: number | null;
+  headCircGainCmPerMonth: number | null;
+}
+
+function daysBetweenDates(d1?: string, d2?: string): number | null {
+  if (!d1 || !d2) return null;
+  const days = Math.round((new Date(d2).getTime() - new Date(d1).getTime()) / (24 * 3600 * 1000));
+  return days > 0 ? days : null;
+}
+
+// Computes weight/length/head-circumference velocity between each pair of
+// consecutive visits (not reference points). Weight velocity uses the
+// average-weight method — (gain / days) / mean(w1, w2) — which is the
+// standard approach for tracking preterm catch-up growth, since dividing by
+// only the starting weight overstates velocity in small infants.
+function computeGrowthVelocity(chartData: ChartPoint[]): VelocityEntry[] {
+  const visitPts = chartData
+    .filter(d => d.visitDate)
+    .sort((a, b) => a.week - b.week);
+
+  const entries: VelocityEntry[] = [];
+
+  for (let i = 1; i < visitPts.length; i++) {
+    const prev = visitPts[i - 1];
+    const curr = visitPts[i];
+
+    // Prefer exact calendar-day difference; fall back to CGA-week diff
+    // (×7) if visit dates are somehow missing/invalid.
+    const days = daysBetweenDates(prev.visitDate, curr.visitDate)
+      ?? Math.round((curr.week - prev.week) * 7);
+    if (!days || days <= 0) continue;
+
+    let weightGainGPerDay: number | null = null;
+    let weightGainGPerKgPerDay: number | null = null;
+    if (prev.weight != null && curr.weight != null) {
+      const gainG = (curr.weight - prev.weight) * 1000;
+      weightGainGPerDay = parseFloat((gainG / days).toFixed(1));
+      const avgWeightKg = (prev.weight + curr.weight) / 2;
+      weightGainGPerKgPerDay = avgWeightKg > 0
+        ? parseFloat((gainG / days / avgWeightKg).toFixed(1))
+        : null;
+    }
+
+    let lengthGainCmPerWeek: number | null = null;
+    if (prev.height != null && curr.height != null) {
+      lengthGainCmPerWeek = parseFloat(((curr.height - prev.height) / (days / 7)).toFixed(2));
+    }
+
+    let headCircGainCmPerMonth: number | null = null;
+    if (prev.headCirc != null && curr.headCirc != null) {
+      headCircGainCmPerMonth = parseFloat(((curr.headCirc - prev.headCirc) / (days / 30.44)).toFixed(2));
+    }
+
+    entries.push({
+      fromWeek: prev.week,
+      toWeek: curr.week,
+      fromDate: prev.visitDate,
+      toDate: curr.visitDate,
+      days,
+      weightGainGPerDay,
+      weightGainGPerKgPerDay,
+      lengthGainCmPerWeek,
+      headCircGainCmPerMonth,
+    });
+  }
+
+  return entries;
+}
+
+function GrowthVelocityPanel({ chartData }: { chartData: ChartPoint[] }) {
+  const entries = useMemo(() => computeGrowthVelocity(chartData), [chartData]);
+  if (entries.length === 0) return null;
+
+  const fmtSigned = (v: number | null, unit: string) =>
+    v == null ? "—" : `${v >= 0 ? "+" : ""}${v} ${unit}`;
+
+  return (
+    <div
+      role="region"
+      aria-label="Growth velocity between visits"
+      style={{
+        backgroundColor: "#f0f9ff",
+        border: "1.5px solid #38bdf8",
+        borderRadius: "10px",
+        padding: "14px 18px",
+        marginBottom: "16px",
+        width: "100%",
+        boxSizing: "border-box" as const,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <span style={{ fontSize: 18, lineHeight: 1 }}>📈</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#0c4a6e" }}>
+          Growth Velocity Between Visits
+        </span>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" as const, fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: "2px solid #bae6fd" }}>
+              <th style={{ textAlign: "left" as const, padding: "6px 8px", color: "#0369a1" }}>Interval</th>
+              <th style={{ textAlign: "left" as const, padding: "6px 8px", color: "#0369a1" }}>Days</th>
+              <th style={{ textAlign: "left" as const, padding: "6px 8px", color: "#0369a1" }}>Weight Gain</th>
+              <th style={{ textAlign: "left" as const, padding: "6px 8px", color: "#0369a1" }}>Length Gain</th>
+              <th style={{ textAlign: "left" as const, padding: "6px 8px", color: "#0369a1" }}>Head Circ. Gain</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((e, i) => (
+              <tr key={i} style={{ borderBottom: "1px solid #e0f2fe" }}>
+                <td style={{ padding: "6px 8px", color: "#334155" }}>
+                  {e.fromWeek.toFixed(1)}w{e.fromDate ? ` (${formatDate(e.fromDate)})` : ""}
+                  {" \u2192 "}
+                  {e.toWeek.toFixed(1)}w{e.toDate ? ` (${formatDate(e.toDate)})` : ""}
+                </td>
+                <td style={{ padding: "6px 8px", color: "#334155" }}>{e.days}</td>
+                <td style={{ padding: "6px 8px", color: "#334155" }}>
+                  {e.weightGainGPerDay != null ? (
+                    <>
+                      {fmtSigned(e.weightGainGPerDay, "g/day")}
+                      {e.weightGainGPerKgPerDay != null && (
+                        <span style={{ color: "#64748b" }}>
+                          {" "}({fmtSigned(e.weightGainGPerKgPerDay, "g/kg/day")})
+                        </span>
+                      )}
+                    </>
+                  ) : "—"}
+                </td>
+                <td style={{ padding: "6px 8px", color: "#334155" }}>
+                  {fmtSigned(e.lengthGainCmPerWeek, "cm/wk")}
+                </td>
+                <td style={{ padding: "6px 8px", color: "#334155" }}>
+                  {fmtSigned(e.headCircGainCmPerMonth, "cm/mo")}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ margin: "10px 0 0", fontSize: 11, color: "#0369a1", fontStyle: "italic" }}>
+        g/kg/day uses the average of the two visit weights as the denominator (average-weight method), the standard approach for tracking preterm catch-up growth.
+      </p>
+    </div>
+  );
+}
+
 interface VisitCardProps {
   v: Visit;
   idx: number;
@@ -1000,6 +1161,7 @@ export default function GrowChart() {
         </div>
 
         {plotted && <GrowthFalteringAlerts chartData={chartData} />}
+        {plotted && <GrowthVelocityPanel chartData={chartData} />}
 
         <div style={s.body}>
           {/* ── Collapsible form sidebar ── */}
@@ -1094,7 +1256,16 @@ export default function GrowChart() {
             ) : (() => {
               const patientPts = chartData
                 .filter(d => d.height != null || d.weight != null || d.headCirc != null)
-                .map(d => ({ week: d.week, height: d.height, weight: d.weight, headCirc: d.headCirc, label: d.weekLabel, visitDate: d.visitDate, dob }));
+                .map(d => ({
+                  week: d.week,
+                  height: d.height,
+                  weight: d.weight,
+                  headCirc: d.headCirc,
+                  bmi: computeBmi(d.weight, d.height),
+                  label: d.weekLabel,
+                  visitDate: d.visitDate,
+                  dob,
+                }));
 
               const fentonPts = patientPts.filter(p => p.week <= splitWeekClamped);
               const whoPts    = patientPts.filter(p => p.week > splitWeekClamped);
