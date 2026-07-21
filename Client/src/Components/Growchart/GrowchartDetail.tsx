@@ -588,137 +588,6 @@ export default function GrowchartDetail() {
 
         <div className="layout-responsive-grid">
 
-          {/* ─── Left Column: Collapsible Patient Details & Forms ─── */}
-          <div
-            ref={formCardRef}
-            style={{
-              ...s.formCard,
-              width: formCollapsed ? 48 : 380,
-              minWidth: formCollapsed ? 48 : 380,
-              padding: formCollapsed ? "16px 10px" : "24px",
-              overflow: "hidden",
-              transition: "width 0.3s ease, min-width 0.3s ease, padding 0.3s ease",
-              alignItems: formCollapsed ? "center" : undefined,
-            }}
-          >
-            {/* Toggle button row — always visible */}
-            <div style={{
-              display: "flex",
-              justifyContent: formCollapsed ? "center" : "space-between",
-              alignItems: "center",
-              borderBottom: formCollapsed ? "none" : "1px solid #f1f5f9",
-              paddingBottom: formCollapsed ? 0 : "12px",
-              marginBottom: formCollapsed ? 0 : "4px",
-              width: "100%",
-            }}>
-              {!formCollapsed && <h2 style={s.formTitle}>Patient Details</h2>}
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {!formCollapsed && (
-                  <button style={s.resetBtn} onClick={handleReset}>↺ Reset</button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setFormCollapsed(c => !c)}
-                  title={formCollapsed ? "Expand panel" : "Collapse panel"}
-                  style={s.collapseBtn}
-                >
-                  {formCollapsed ? "▶" : "◀"}
-                </button>
-              </div>
-            </div>
-
-            {/* All form content — hidden when collapsed */}
-            {!formCollapsed && (
-              <>
-                <div style={s.field}>
-                  <label style={s.label}>Patient Full Name</label>
-                  <input style={s.input} type="text" placeholder="e.g. Baby Doe"
-                    value={patientName} onChange={e => setPatientName(e.target.value)} />
-                </div>
-                <div style={s.row}>
-                  <div style={{ ...s.field, flex: 1 }}>
-                    <label style={s.label}>Date of Birth</label>
-                    <input style={s.input} type="date" value={dob}
-                      max={new Date().toISOString().split("T")[0]}
-                      onChange={e => setDob(e.target.value)} />
-                  </div>
-                  <div style={{ ...s.field, flex: 1 }}>
-                    <label style={s.label}>Biological Sex</label>
-                    <select style={s.select} value={gender} onChange={e => setGender(e.target.value as Gender)}>
-                      <option value="">Select</option>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                    </select>
-                  </div>
-                </div>
-                <div style={s.field}>
-                  <label style={s.label}>Gestational Age at Birth (weeks)</label>
-                  <input style={s.input} type="number" min="22" max="50"
-                    value={gaAtBirth} onChange={e => setGaAtBirth(e.target.value)} />
-                </div>
-                <div style={s.visitsDivider}>
-                  <h3 style={s.visitsTitle}>Visits Logging Form</h3>
-                  <button style={s.addBtn} onClick={handleAddVisit}>+ Add Log Entry</button>
-                </div>
-                <div style={s.visitList}>
-                  {visits.map((visit, index) => {
-                    const cga = visit.date && dob && gaAtBirth
-                      ? cgaWeek(dob, ga, visit.date) : null;
-                    return (
-                      <div key={visit.id} data-visit-card style={s.visitCard}>
-                        <div style={s.visitCardHeader}>
-                          <span style={s.visitLabel}>Record #{index + 1}</span>
-                          {visits.length > 1 && (
-                            <button style={s.deleteBtn} onClick={() => handleRemoveVisit(visit.id)}>Delete</button>
-                          )}
-                        </div>
-                        <div style={s.field}>
-                          <label style={s.label}>Date of Examination</label>
-                          <input style={s.input} type="date" value={visit.date}
-                            min={dob || undefined}
-                            max={new Date().toISOString().split("T")[0]}
-                            onChange={e => handleUpdateVisit(visit.id, "date", e.target.value)} />
-                        </div>
-                        {cga !== null && (
-                          <div style={s.field}>
-                            <label style={s.label}>Age at Visit</label>
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <div style={{ ...s.cgaDisplay, flex: 1 }}>
-                                <span style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 2 }}>Corrected (CGA)</span>
-                                {cga.toFixed(1)}w
-                              </div>
-                              <div style={{ ...s.cgaDisplay, flex: 1 }}>
-                                <span style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 2 }}>Chronological</span>
-                                {chronologicalAge(dob, visit.date)}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        <div style={s.row}>
-                          <div style={{ ...s.field, flex: 1 }}>
-                            <label style={s.label}>Weight (kg)</label>
-                            <input style={s.input} type="number" step="0.001" placeholder="0.00"
-                              value={visit.weight} onChange={e => handleUpdateVisit(visit.id, "weight", e.target.value)} />
-                          </div>
-                          <div style={{ ...s.field, flex: 1 }}>
-                            <label style={s.label}>Length (cm)</label>
-                            <input style={s.input} type="number" step="0.1" placeholder="0.0"
-                              value={visit.height} onChange={e => handleUpdateVisit(visit.id, "height", e.target.value)} />
-                          </div>
-                        </div>
-                        <div style={s.field}>
-                          <label style={s.label}>Head Circumference (cm)</label>
-                          <input style={s.input} type="number" step="0.1" placeholder="0.0"
-                            value={visit.headCirc} onChange={e => handleUpdateVisit(visit.id, "headCirc", e.target.value)} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-
           {/* ─── Right Column: Controls, Chart & Table ─── */}
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
@@ -966,6 +835,17 @@ const s: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     fontSize: "13px",
     cursor: "pointer",
+  },
+  addPatientBtn: {
+    padding: "8px 16px",
+    backgroundColor: "#3b82f6",
+    color: "#fff",
+    border: "none",
+    borderRadius: "8px",
+    fontSize: "13px",
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "background 0.2s",
   },
   formCard: {
     backgroundColor: "#ffffff",

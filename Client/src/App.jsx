@@ -1,20 +1,30 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { GrowchartProvider } from "./Components/Growchart/GrowchartContext";
-import Navbar from "./Components/Growchart/Navbar";
+import Sidebar from "./Components/Growchart/Sidebar";
 import GrowChart from "./Components/Growchart/growchart.tsx";
 import GrowchartDetail from "./Components/Growchart/GrowchartDetail";
 import TDSCChartManager from "./Components/Growchart/TDSchartmanager.tsx";
+import AddPatient from "./Components/Growchart/AddPatient";
+import PatientList from "./Components/Growchart/PatientList";
+import { useState } from "react";
 
 function App() {
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+
   return (
     <BrowserRouter>
       <GrowchartProvider>
-        <Navbar />
-        <Routes>
-          <Route path="/" element={<GrowChart />} />
-          <Route path="/detail" element={<GrowchartDetail />} />
-          <Route path="/TDSC3yrs" element={<TDSCChartManager />} />
-        </Routes>
+        <Sidebar onWidthChange={setSidebarWidth} />
+        <div style={{ marginLeft: `${sidebarWidth}px`, transition: "margin-left 0.3s ease" }}>
+          <Routes>
+            <Route path="/" element={<GrowChart />} />
+            <Route path="/patients" element={<PatientList />} />
+            <Route path="/detail" element={<GrowchartDetail />} />
+            <Route path="/TDSC3yrs" element={<TDSCChartManager />} />
+            <Route path="/add-patient" element={<AddPatient />} />
+            <Route path="/edit-patient" element={<AddPatient />} />
+          </Routes>
+        </div>
       </GrowchartProvider>
     </BrowserRouter>
   );

@@ -995,11 +995,16 @@ function SequentialPatientForm({ patientName, dob, gaAtBirth, gender, termWeek, 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function GrowChart() {
   const navigate = useNavigate();
-  const { setPatient, homeForm, setHomeForm } = useGrowchart();
+  const { setPatient, homeForm, setHomeForm, patient } = useGrowchart();
   function newId() { return crypto.randomUUID(); }
 
-  const { patientName, dob, gender, gaAtBirth, plotted } = homeForm;
-  const visits = homeForm.visits;
+  // Use patient context data if available, otherwise fall back to homeForm
+  const patientName = patient?.patientName || homeForm.patientName;
+  const dob = patient?.dob || homeForm.dob;
+  const gender = patient?.gender || homeForm.gender;
+  const gaAtBirth = patient?.gaAtBirth || homeForm.gaAtBirth;
+  const visits = patient?.visits || homeForm.visits;
+  const plotted = !!patient || homeForm.plotted;
 
   const [newVisitId, setNewVisitId] = useState<string | null>(null);
   const [formCollapsed, setFormCollapsed] = useState(false);
@@ -1164,78 +1169,6 @@ export default function GrowChart() {
         {plotted && <GrowthVelocityPanel chartData={chartData} />}
 
         <div style={s.body}>
-          {/* ── Collapsible form sidebar ── */}
-          <div
-            ref={formCardRef}
-            className="gc-form-card"
-            style={{
-              ...s.formCard,
-              width: formCollapsed ? 36 : 320,
-              padding: formCollapsed ? "10px 6px" : "20px",
-              transition: "width 0.25s ease, padding 0.25s ease",
-            }}
-          >
-            {/* Collapse toggle */}
-            <div style={{ display: "flex", justifyContent: formCollapsed ? "center" : "flex-end" }}>
-              <button
-                type="button"
-                onClick={() => setFormCollapsed(c => !c)}
-                title={formCollapsed ? "Expand form" : "Collapse form"}
-                style={s.collapseBtn}
-                aria-label={formCollapsed ? "Expand form" : "Collapse form"}
-              >
-                {formCollapsed ? "▶" : "◀"}
-              </button>
-            </div>
-
-            {!formCollapsed && (
-              <form onSubmit={handlePlot} style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: 8 }}>
-                <h3 style={s.sectionTitle}>Patient Info</h3>
-
-                {/* ── Sequential animated fields ── */}
-                <SequentialPatientForm
-                  patientName={patientName}
-                  dob={dob}
-                  gaAtBirth={gaAtBirth}
-                  gender={gender}
-                  termWeek={termWeek}
-                  onChange={handlePatientFieldChange}
-                />
-
-                <div style={s.divider} />
-
-                <div style={s.visitsHeader}>
-                  <h3 style={s.sectionTitle}>Visits</h3>
-                  <button type="button" onClick={addVisit} style={s.addBtn}>+ Add</button>
-                </div>
-
-                <div style={s.visitList}>
-                  {homeForm.visits.map((v, idx) => (
-                    <VisitCard
-                      key={v.id}
-                      v={v}
-                      idx={idx}
-                      isNew={v.id === newVisitId}
-                      canRemove={homeForm.visits.length > 1}
-                      dob={dob}
-                      gaAtBirth={gaAtBirth}
-                      errors={visitErrors[v.id]}
-                      onRemove={id => setHomeForm(prev => ({ ...prev, visits: prev.visits.filter(x => x.id !== id) }))}
-                      onUpdate={updateVisit}
-                      onAnimateOut={handleAnimateOut}
-                      onAnimateInDone={handleAnimateInDone}
-                    />
-                  ))}
-                </div>
-
-                <div style={s.btnRow}>
-                  <button ref={plotBtnRef} type="submit" style={s.btnPrimary}>Plot Chart</button>
-                  <button type="button" onClick={handleReset} style={s.btnSecondary}>Reset</button>
-                </div>
-              </form>
-            )}
-          </div>
-
           {/* ── Chart card ── */}
           <div ref={chartCardRef} className="gc-chart-card" style={s.chartCard}>
             {plotted && (
@@ -1378,6 +1311,7 @@ const s: Record<string, React.CSSProperties> = {
   page:         { minHeight: "calc(100vh - 52px)", backgroundColor: "#f8fafc", padding: "24px", fontFamily: "system-ui, sans-serif", boxSizing: "border-box", width: "100%" },
   wrapper:      { maxWidth: "100%", margin: "0 auto" },
   header:       { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" },
+  addPatientBtn: { padding: "8px 16px", backgroundColor: "#3b82f6", color: "#fff", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, cursor: "pointer", transition: "background 0.2s" },
   patientBadge: { backgroundColor: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "8px", padding: "8px 16px" },
   patientName:  { fontWeight: 700, fontSize: "14px", color: "#0f172a" },
   patientDob:   { fontSize: "12px", color: "#475569", marginLeft: 8 },

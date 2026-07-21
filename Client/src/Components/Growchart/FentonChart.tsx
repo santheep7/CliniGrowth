@@ -137,6 +137,22 @@ function formatTick(value: number) {
 
 const COLORS = { reference: "#6b7280", patient: "#111827" };
 
+// The Length and Head Circumference percentile bands genuinely overlap on the
+// official Fenton chart from ~22 to ~36 weeks (verified against the source PDF).
+// Both series used to share the exact same gray + dash style, so in that overlap
+// zone there was no visual cue distinguishing "this dash belongs to Length" from
+// "this dash belongs to Head Circ." A faint per-series tint fixes that without
+// making the chart look like it's using a different color scheme than the print
+// original — each tint reads as "gray" at a glance but is distinguishable close up.
+const REF_TINTS: Record<string, string> = {
+  Length: "#5b7a8c",              // faint cool/blue-gray
+  "Head Circumference": "#8c6b5b", // faint warm gray
+  Weight: "#6b7280",               // unchanged neutral gray
+};
+function refColorFor(label: string) {
+  return REF_TINTS[label] ?? COLORS.reference;
+}
+
 function interpolateRef(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
   if (!data.length) return null;
   const sorted = [...data].sort((a, b) => a.x - b.x);
@@ -151,6 +167,7 @@ function interpolateRef(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null
 }
 
 function buildSeries(refData: RefPoint[], label: string): ExtendedDataset[] {
+  const color = refColorFor(label);
   return PERCENTILES.map((percentile) => {
     const data = REF_WEEKS.map(w => {
       const point = interpolateRef(refData, w);
@@ -160,10 +177,10 @@ function buildSeries(refData: RefPoint[], label: string): ExtendedDataset[] {
     return {
       label: `${label} ${percentile.replace("p", "")}th`,
       data,
-      borderColor: COLORS.reference,
+      borderColor: color,
       borderWidth: percentile === "p50" ? 1.6 : 0.9,
       borderDash: percentile === "p50" ? [] : [4, 3],
-      tension: 0.35,
+      cubicInterpolationMode: "monotone",
       pointRadius: 0,
       spanGaps: true,
       fill: false,
@@ -179,7 +196,7 @@ function buildPatientDataset(label: string, points: Array<{ x: number; y: number
     backgroundColor: COLORS.patient,
     borderWidth: 2.5,
     borderDash: dash ?? [],
-    tension: 0.35,
+    cubicInterpolationMode: "monotone",
     pointRadius: 8,
     pointHoverRadius: 11,
     pointBorderWidth: 2.5,
@@ -275,13 +292,14 @@ const fentonBackgroundPlugin = {
       const matched = chart.data.datasets.map((ds: any, i: number) => ({ ds, i }))
         .filter(({ ds }: any) => ds.label?.startsWith(prefix) && !ds.label.includes("Patient"));
       if (!matched.length) return;
+      const labelColor = refColorFor(prefix);
       matched.forEach(({ i }: any, pIdx: number) => {
         const meta = chart.getDatasetMeta(i);
         const isP50 = pIdx === 2;
         const percPt = getPixelAtChartX(meta, scales.x.getPixelForValue(percAtX));
         if (percPt && percPt.y >= top && percPt.y <= bottom)
           drawOnLineLabel(ctx, PERCENTILE_LABELS[pIdx], percPt.x, percPt.y, percPt.angle,
-            isP50 ? "bold 11px system-ui, sans-serif" : "11px system-ui, sans-serif", "#475569");
+            isP50 ? "bold 11px system-ui, sans-serif" : "11px system-ui, sans-serif", labelColor);
         if (isP50) {
           const namePt = getPixelAtChartX(meta, scales.x.getPixelForValue(nameAtX));
           if (namePt && namePt.y >= top && namePt.y <= bottom)
