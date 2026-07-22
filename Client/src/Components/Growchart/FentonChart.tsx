@@ -39,7 +39,7 @@ interface PatientPoint {
 interface FentonChartProps {
   gender: Gender;
   patientData: PatientPoint[];
-  splitWeek: number;
+  splitWeek?: number;
   sidebarContent?: React.ReactNode;
   onSidebarOpen?: () => void;
   /** CGA weeks at which a growth faltering alert should be drawn (arrow + label at chart top) */
@@ -50,27 +50,14 @@ type ExtendedDataset = ChartDataset<"line"> & { yAxisID?: string };
 
 const X_MIN = 22;
 
-// ── Y-axis calibration ──────────────────────────────────────────────────────
-// Measured directly off the official 2025 Fenton PDF (5100x6600px render):
-// the entire vertical grid is ONE uniform mesh, ~62.3px per minor gridline,
-// and that single minor gridline happens to equal exactly 1cm on the
-// centimeters scale AND exactly 0.1kg on the weight scale (they coincide
-// pixel-for-pixel). So if we define our chart's Y-axis in "minor grid units"
-// (0 to 90, matching the 90 minor gridlines on the printed chart), both
-// physical scales become trivial linear functions with no fudge factors:
-//   cm = Y - 30        (cm axis printed range: 15 -> Y45, 60 -> Y90)
-//   kg = Y / 10         (weight axis printed range: 0 -> Y0, 6.5 -> Y65)
-// This also reproduces the real chart's behavior where the weight curve
-// visually overlaps the same vertical space as the lower portion of the
-// length/head-circumference curves (it is NOT a non-overlapping split chart).
 const Y_MIN = 0;
-const Y_MAX = 100; // raised from 90 — boys p97 length at 50w = 67.2 cm = 97.2 grid units
+const Y_MAX = 90;
 
-const CM_RAW_MIN = 15;   // lowest cm gridline printed on the official chart
-const CM_RAW_MAX = 70;   // raised from 60 — accommodates full boys/girls length range to 50w
-const WEIGHT_RAW_MAX = 6.5; // highest weight gridline printed (right axis ceiling)
+const CM_RAW_MIN = 15;   
+const CM_RAW_MAX = 60;   
+const WEIGHT_RAW_MAX = 6.5; 
 
-const REF_WEEKS = [22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50] as const;
+const REF_WEEKS = [22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50] as const;
 const PERCENTILES = ["p3", "p10", "p50", "p90", "p97"] as const;
 
 const PATIENT_DATASET_LABELS = ["Patient Length", "Patient Head Circumference", "Patient Weight"];
@@ -87,28 +74,16 @@ function mapValueToChart(label: string, value: number) {
 
 interface AxisTick { value: number; label: string; }
 
-// Official printed label sets (measured/OCR-confirmed from the PDF):
-//   LEFT axis:  cm 60,55,...,15  then a blank gap then  kg 4,3.5,...,0
-//   RIGHT axis: cm 60,55,...,40  then a blank gap then  kg 6.5,6,...,0
-// (Both axes share the exact same gridline mesh - they just choose to label
-// different subsets of it, which is why the weight and cm bands overlap.)
 function buildAxisTicks(cmLabelFloor: number, weightLabelCeil: number, extendCmTo: number, extendWeightTo: number): AxisTick[] {
   const raw: AxisTick[] = [];
-  // cm labels, descending from the top of the chart down to CM_RAW_MIN (or further if patient data requires it)
   const cmTop = Math.max(CM_RAW_MAX, Math.ceil(extendCmTo / 5) * 5);
   for (let v = cmTop; v >= CM_RAW_MIN; v -= 5) {
     raw.push({ value: mapCmValue(v), label: v >= cmLabelFloor ? `${v}` : "" });
   }
-  // weight labels, ascending from 0 up to the printed ceiling (or further if patient data requires it)
   const weightTop = Math.max(WEIGHT_RAW_MAX, Math.ceil(extendWeightTo * 2) / 2);
   for (let v = 0; v <= weightTop + 0.001; v += 0.5) {
     raw.push({ value: mapWeightValue(v), label: v <= weightLabelCeil + 0.001 ? v.toFixed(1) : "" });
   }
-  // The cm and weight scales share one physical gridline mesh, so some ticks land on
-  // the exact same Y-value (e.g. cm 15 === kg 4.5 === Y45, cm 20 === kg 5.0 === Y50, etc).
-  // Without de-duping, whichever tick happens to be pushed last (here, the weight tick,
-  // which is intentionally blank past weightLabelCeil) silently overwrites a real cm
-  // label when both end up at the same key in a Map. Always keep the non-empty label.
   const merged = new Map<number, string>();
   for (const t of raw) {
     const existing = merged.get(t.value);
@@ -128,29 +103,25 @@ function buildYTicks(maxCmNeeded: number, maxWeightNeeded: number): {
 }
 
 function formatTick(value: number) {
-  // Fallback formatter for any procedurally-extended ticks beyond the
-  // officially printed range. Y >= 45 sits in the cm band, below that
-  // it's the weight band (matches the real chart's overlap boundary).
   if (value >= 45) return Math.round(value - 30).toString();
   return (value / 10).toFixed(1);
 }
 
 const COLORS = { reference: "#6b7280", patient: "#111827" };
 
-// The Length and Head Circumference percentile bands genuinely overlap on the
-// official Fenton chart from ~22 to ~36 weeks (verified against the source PDF).
-// Both series used to share the exact same gray + dash style, so in that overlap
-// zone there was no visual cue distinguishing "this dash belongs to Length" from
-// "this dash belongs to Head Circ." A faint per-series tint fixes that without
-// making the chart look like it's using a different color scheme than the print
-// original — each tint reads as "gray" at a glance but is distinguishable close up.
 const REF_TINTS: Record<string, string> = {
-  Length: "#5b7a8c",              // faint cool/blue-gray
-  "Head Circumference": "#8c6b5b", // faint warm gray
-  Weight: "#6b7280",               // unchanged neutral gray
+  Length: "#5b7a8c",
+  "Head Circumference": "#8c6b5b",
+  Weight: "#6b7280",
 };
 function refColorFor(label: string) {
   return REF_TINTS[label] ?? COLORS.reference;
+}
+
+function dashForPercentile(percentile: (typeof PERCENTILES)[number]): number[] {
+  if (percentile === "p50") return [];
+  if (percentile === "p10" || percentile === "p90") return [4, 3];
+  return [1, 3];
 }
 
 function interpolateRef(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
@@ -179,8 +150,8 @@ function buildSeries(refData: RefPoint[], label: string): ExtendedDataset[] {
       data,
       borderColor: color,
       borderWidth: percentile === "p50" ? 1.6 : 0.9,
-      borderDash: percentile === "p50" ? [] : [4, 3],
-      cubicInterpolationMode: "monotone",
+      borderDash: dashForPercentile(percentile),
+      tension: 0.35,
       pointRadius: 0,
       spanGaps: true,
       fill: false,
@@ -258,9 +229,7 @@ const fentonBackgroundPlugin = {
     ctx.save();
     ctx.strokeStyle = "#eef1f4";
     ctx.lineWidth = 0.5;
-    // Single uniform mesh: on the real chart, 1 minor gridline = 1cm = 0.1kg,
-    // so cm and weight share the exact same physical gridlines (no separate
-    // bands, no separator). Major lines every 5 units (5cm / 0.5kg), matching print.
+
     for (let v = Y_MIN; v <= Y_MAX + 0.001; v += 1) {
       const y = scales.y.getPixelForValue(v);
       ctx.beginPath();
@@ -270,8 +239,8 @@ const fentonBackgroundPlugin = {
     }
     ctx.restore();
 
-    const weightLabelPixel = scales.y.getPixelForValue(20); // mid of weight-only zone (Y 0-45)
-    const cmLabelPixel = scales.y.getPixelForValue(72.5);   // mid of cm zone (Y 45-100)
+    const weightLabelPixel = scales.y.getPixelForValue(20);
+    const cmLabelPixel = scales.y.getPixelForValue(67.5);
 
     ctx.save();
     ctx.font = "bold 11px system-ui, sans-serif";
@@ -293,12 +262,14 @@ const fentonBackgroundPlugin = {
         .filter(({ ds }: any) => ds.label?.startsWith(prefix) && !ds.label.includes("Patient"));
       if (!matched.length) return;
       const labelColor = refColorFor(prefix);
+      
+      const currentPercentileLabels = PERCENTILE_LABELS;
       matched.forEach(({ i }: any, pIdx: number) => {
         const meta = chart.getDatasetMeta(i);
         const isP50 = pIdx === 2;
         const percPt = getPixelAtChartX(meta, scales.x.getPixelForValue(percAtX));
         if (percPt && percPt.y >= top && percPt.y <= bottom)
-          drawOnLineLabel(ctx, PERCENTILE_LABELS[pIdx], percPt.x, percPt.y, percPt.angle,
+          drawOnLineLabel(ctx, currentPercentileLabels[pIdx], percPt.x, percPt.y, percPt.angle,
             isP50 ? "bold 11px system-ui, sans-serif" : "11px system-ui, sans-serif", labelColor);
         if (isP50) {
           const namePt = getPixelAtChartX(meta, scales.x.getPixelForValue(nameAtX));
@@ -330,7 +301,6 @@ const fentonBackgroundPlugin = {
         ctx.stroke();
         ctx.restore();
 
-        // ── Value label, drawn right on the point/line itself ────────────────
         const raw = ds.data[idx];
         const val = raw?.yOriginal;
         if (typeof val === "number") {
@@ -338,8 +308,6 @@ const fentonBackgroundPlugin = {
           drawOnLineLabel(ctx, text, element.x, element.y, 0,
             "bold 11px system-ui, sans-serif", seriesColor, -(r + 12));
 
-          // Metric name drawn once per series, only on the first point, so it
-          // identifies the line without repeating on every dot.
           if (idx === 0) {
             const metricName = ds.label === "Patient Head Circumference" ? "Head Circ."
               : ds.label === "Patient Length" ? "Length"
@@ -368,7 +336,6 @@ const fentonBackgroundPlugin = {
         const shaftEnd = arrowTip - headSize;
         const shaftTop = top - 8;
 
-        // Shaft
         ctx.save();
         ctx.strokeStyle = color;
         ctx.lineWidth   = 2;
@@ -378,7 +345,6 @@ const fentonBackgroundPlugin = {
         ctx.lineTo(px, shaftEnd);
         ctx.stroke();
 
-        // Arrowhead
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.moveTo(px,            arrowTip);
@@ -387,7 +353,6 @@ const fentonBackgroundPlugin = {
         ctx.closePath();
         ctx.fill();
 
-        // Label pill
         ctx.font         = "bold 9px system-ui, sans-serif";
         ctx.textAlign    = "center";
         ctx.textBaseline = "middle";
@@ -420,6 +385,8 @@ const fentonBackgroundPlugin = {
     ctx.restore();
   },
 };
+
+const CHART_PLUGINS = [fentonBackgroundPlugin];
 
 // ─── PDF download helper ───────────────────────────────────────────────────────
 async function downloadChartAsPdf(wrapperEl: HTMLElement, filename: string) {
@@ -502,107 +469,8 @@ if (typeof document !== "undefined" && !document.getElementById("fenton-pdf-spin
   document.head.appendChild(st);
 }
 
-// ─── Alert Arrow Plugin ───────────────────────────────────────────────────────
-// Draws a small downward arrow + short label at the very top of the chart
-// above each CGA week that has a growth faltering alert.
-function buildAlertArrowPlugin(alertWeeks: FentonChartProps["alertWeeks"]) {
-  return {
-    id: `fentonAlertArrows-${Date.now()}`,
-    afterDraw(chart: any) {
-      if (!alertWeeks?.length) return;
-      const { ctx, scales, chartArea } = chart;
-      if (!ctx || !scales?.x) return;
-      const { top } = chartArea;
-
-      ctx.save();
-      // Expand the clip to include the padding band above chartArea.top
-      // so the arrow shaft and label pill are visible
-      ctx.beginPath();
-      ctx.rect(chartArea.left, 0, chartArea.right - chartArea.left, chartArea.bottom);
-      ctx.clip();
-
-      // Group by week key so multiple metrics at the same visit stack side-by-side
-      const byWeek = new Map<string, NonNullable<typeof alertWeeks>>();
-      for (const a of alertWeeks) {
-        const key = a.week.toFixed(1);
-        if (!byWeek.has(key)) byWeek.set(key, []);
-        byWeek.get(key)!.push(a);
-      }
-
-      byWeek.forEach((entries, _key) => {
-        const week = entries[0].week;
-        if (week < scales.x.min || week > scales.x.max) return;
-        const centerPx = scales.x.getPixelForValue(week);
-
-        const count      = entries.length;
-        const spacing    = 16;
-        const totalSpan  = (count - 1) * spacing;
-        const startX     = centerPx - totalSpan / 2;
-
-        entries.forEach(({ label, color }, idx) => {
-          const px       = startX + idx * spacing;
-          const headSize = 6;
-          const arrowTip = top + 8;          // tip lands just inside the chart area
-          const shaftEnd = arrowTip - headSize;
-          const shaftTop = top - 8;          // tighter — label sits just above chart border
-
-          // Shaft
-          ctx.strokeStyle = color;
-          ctx.lineWidth   = 2;
-          ctx.lineCap     = "round";
-          ctx.beginPath();
-          ctx.moveTo(px, shaftTop);
-          ctx.lineTo(px, shaftEnd);
-          ctx.stroke();
-
-          // Arrowhead (solid downward triangle)
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.moveTo(px,              arrowTip);
-          ctx.lineTo(px - headSize,   shaftEnd);
-          ctx.lineTo(px + headSize,   shaftEnd);
-          ctx.closePath();
-          ctx.fill();
-
-          // Label pill above the shaft tail
-          ctx.font         = "bold 9px system-ui, sans-serif";
-          ctx.textAlign    = "center";
-          ctx.textBaseline = "middle";
-          const tw  = ctx.measureText(label).width + 8;
-          const th  = 13;
-          const ly  = shaftTop - th / 2 - 2;
-          const rx  = px - tw / 2;
-          const ry  = ly - th / 2;
-          const rad = 3;
-
-          // White fill
-          ctx.fillStyle = "rgba(255,255,255,0.95)";
-          ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(rx, ry, tw, th, rad);
-          else ctx.rect(rx, ry, tw, th);
-          ctx.fill();
-
-          // Coloured border
-          ctx.strokeStyle = color;
-          ctx.lineWidth   = 1;
-          ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(rx, ry, tw, th, rad);
-          else ctx.rect(rx, ry, tw, th);
-          ctx.stroke();
-
-          // Label text
-          ctx.fillStyle = color;
-          ctx.fillText(label, px, ly);
-        });
-      });
-
-      ctx.restore();
-    },
-  };
-}
-
 // ─── Main FentonChart component ───────────────────────────────────────────────
-export default function FentonChart({ gender, patientData, sidebarContent, onSidebarOpen, alertWeeks }: FentonChartProps) {
+export default function FentonChart({ gender, patientData, sidebarContent, alertWeeks }: FentonChartProps) {
   if (gender === "") {
     console.warn("[FentonChart] gender prop is empty.");
   }
@@ -631,7 +499,7 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
       allCms.length ? Math.max(...allCms) : CM_RAW_MAX,
       allKgs.length ? Math.max(...allKgs) : WEIGHT_RAW_MAX,
     );
-  }, [gender, patientData, showReference, isMale]);
+  }, [patientData, showReference, isMale]);
 
   const datasets: ExtendedDataset[] = useMemo(() => {
     const showRef = gender === "male" || gender === "female";
@@ -683,10 +551,6 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
       ...buildSeries(wRef, "Weight"),
     ].map(ds => ({ ...ds, order: 10 }));
 
-    // Alert marker datasets — one per alert entry, rendered as a single point
-    // at y = Y_MAX so it sits at the very top of the chart area.
-    // The actual arrow + label is drawn by the background plugin which reads
-    // dataset label prefix "Alert:" to identify these.
     const alertDatasets: ExtendedDataset[] = (alertWeeks ?? []).map(({ week, label, color }) => ({
       label: `Alert:${label}`,
       data: [{ x: week, y: Y_MAX }] as { x: number; y: number }[],
@@ -732,14 +596,14 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
         type: "linear", 
         min: X_MIN, 
         max: xMax,
-        offset: false, // <-- Fixes the horizontal gap issue
+        offset: false,
         title: { display: true, text: "Gestational age (weeks)", color: "#475569", font: { size: 12, weight: 600 } },
         ticks: { stepSize: 2, color: "#475569", font: { size: 11 } },
         grid: { color: "#e2e8f0" },
       },
       y: {
         min: Y_MIN, max: Y_MAX, title: { display: false },
-        offse:false, 
+        offset: false,
         bounds: "ticks",
         afterBuildTicks: (scale: any) => {
           scale.ticks = yTickValues.left.map(t => ({ value: t.value }));
@@ -749,7 +613,7 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
       },
       yRight: {
         position: "right", min: Y_MIN, max: Y_MAX, title: { display: false },
-         offse:false, 
+        offset: false,
         bounds: "ticks",
         afterBuildTicks: (scale: any) => {
           scale.ticks = yTickValues.right.map(t => ({ value: t.value }));
@@ -779,7 +643,7 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
                 Select a gender to display Fenton reference curves.
               </p>
             )}
-            <Line data={data} options={options} plugins={[fentonBackgroundPlugin]} />
+            <Line data={data} options={options} plugins={CHART_PLUGINS} />
           </div>
         </div>
       </div>
@@ -797,7 +661,7 @@ export default function FentonChart({ gender, patientData, sidebarContent, onSid
             Select a gender to display Fenton reference curves.
           </p>
         )}
-        <Line data={data} options={options} plugins={[fentonBackgroundPlugin]} />
+        <Line data={data} options={options} plugins={CHART_PLUGINS} />
       </div>
     </div>
   );
