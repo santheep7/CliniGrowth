@@ -360,7 +360,7 @@ export function FentonD3Chart({
         ref: lRef,
         mapY: mapCmValue,
         nameAtX: 30,
-        percAtX: 48,
+        percAtX: 42,
         displayName: "Length",
       },
       {
@@ -368,7 +368,7 @@ export function FentonD3Chart({
         ref: hcRef,
         mapY: mapCmValue,
         nameAtX: 45,
-        percAtX: 49,
+        percAtX: 46,
         displayName: "Head Circ.",
       },
       {
@@ -376,7 +376,7 @@ export function FentonD3Chart({
         ref: wRef,
         mapY: mapWeightValue,
         nameAtX: 26,
-        percAtX: 48,
+        percAtX: 37,
         displayName: "Weight",
       },
     ];
