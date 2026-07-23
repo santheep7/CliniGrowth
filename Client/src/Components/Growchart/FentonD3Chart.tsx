@@ -252,19 +252,8 @@ export function FentonD3Chart({
       .attr("stroke", "#e2e8f0")
       .attr("stroke-width", 1);
 
-    // Vertical grid — every week minor, every 2 weeks major
-    g.selectAll(".x-grid-minor")
-      .data(d3.range(X_MIN, X_MAX + 1, 1))
-      .enter()
-      .append("line")
-      .attr("x1", (d) => xScale(d))
-      .attr("x2", (d) => xScale(d))
-      .attr("y1", 0)
-      .attr("y2", innerHeight)
-      .attr("stroke", "#eef1f4")
-      .attr("stroke-width", 0.5);
-
-    g.selectAll(".x-grid-major")
+    // Vertical grid — every 2 weeks (between monthly lines)
+    g.selectAll(".x-grid-biweekly")
       .data(d3.range(X_MIN, X_MAX + 1, 2))
       .enter()
       .append("line")
@@ -274,6 +263,18 @@ export function FentonD3Chart({
       .attr("y2", innerHeight)
       .attr("stroke", "#cbd5e1")
       .attr("stroke-width", 1);
+
+    // Monthly grid lines (every 4 weeks) - emphasized
+    g.selectAll(".x-grid-monthly")
+      .data(d3.range(X_MIN, X_MAX + 1, 4))
+      .enter()
+      .append("line")
+      .attr("x1", (d) => xScale(d))
+      .attr("x2", (d) => xScale(d))
+      .attr("y1", 0)
+      .attr("y2", innerHeight)
+      .attr("stroke", "#94a3b8")
+      .attr("stroke-width", 1.5);
 
     // X-axis labels
     g.selectAll(".x-label")

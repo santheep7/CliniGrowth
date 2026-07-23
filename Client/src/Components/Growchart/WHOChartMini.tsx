@@ -852,7 +852,7 @@ function SingleMetricChart({
           customTicks.push({ value: 40 });
           for (let y = 0; y < 5; y++) {
             if (y > 0) customTicks.push({ value: 40 + y * 52 });
-            [2, 4, 6, 8, 10].forEach((m) => {
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].forEach((m) => {
               customTicks.push({ value: 40 + y * 52 + m * (52 / 12) });
             });
           }
