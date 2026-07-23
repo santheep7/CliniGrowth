@@ -27,6 +27,7 @@ import {
   type RefPoint,
 } from "./referenceData";
 import { BMID3Chart } from "./BMID3Chart";
+import { WHOD3Chart } from "./WHOD3Chart";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler, Title);
 
@@ -944,9 +945,9 @@ function SingleMetricChart({
           height,
           position: "relative",
           backgroundColor: "#fff",
-          border: metric === "bmi" ? `4px solid ${posterAccent}` : `2px solid ${posterAccent}`,
-          borderRadius: metric === "bmi" ? 4 : 8,
-          padding: metric === "bmi" ? 6 : 10,
+          border: `4px solid ${posterAccent}`,
+          borderRadius: 4,
+          padding: 6,
           boxSizing: "border-box",
         }}
       >
@@ -957,7 +958,12 @@ function SingleMetricChart({
             height={height - 20}
           />
         ) : (
-          <Line data={chartData} options={options} plugins={[percentileLabelsPlugin]} />
+          <WHOD3Chart
+            metric={metric}
+            patientData={patientData}
+            genderView={genderView}
+            height={height - 20}
+          />
         )}
       </div>
     </div>
