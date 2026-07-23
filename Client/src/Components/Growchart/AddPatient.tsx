@@ -12,6 +12,175 @@ interface Visit {
   headCirc: string;
 }
 
+// Helper function to calculate chronological age in weeks
+function calculateChronologicalAge(dob: Date | null, visitDate: Date | null): number | null {
+  if (!dob || !visitDate) return null;
+  const diffTime = visitDate.getTime() - dob.getTime();
+  const diffDays = diffTime / (1000 * 60 * 60 * 24);
+  return diffDays / 7; // Convert to weeks
+}
+
+// Helper function to calculate corrected gestational week
+function calculateCorrectedGestationalWeek(gaAtBirth: string, chronologicalAge: number | null): number | null {
+  if (!gaAtBirth || chronologicalAge === null) return null;
+  const gaAtBirthNum = parseFloat(gaAtBirth);
+  if (isNaN(gaAtBirthNum)) return null;
+  return gaAtBirthNum + chronologicalAge;
+}
+
+// Custom input component with calendar icon
+function DateInputWithIcon({ value, onClick, onChange, visitId, visits, setVisits }: any) {
+  const [inputValue, setInputValue] = useState('');
+  const [isDateSaved, setIsDateSaved] = useState(false);
+
+  // Format Date object to DD/MM/YYYY string
+  const formatDate = (date: Date | null | string): string => {
+    if (!date) return '';
+    if (typeof date === 'string') return date;
+    if (date instanceof Date) {
+      const d = date.getDate().toString().padStart(2, '0');
+      const m = (date.getMonth() + 1).toString().padStart(2, '0');
+      const y = date.getFullYear();
+      return `${d}/${m}/${y}`;
+    }
+    return '';
+  };
+
+  // Initialize with the value prop (Date object)
+  useEffect(() => {
+    setInputValue(formatDate(value));
+    setIsDateSaved(!!value);
+  }, [value]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value;
+    let digits = input.replace(/\D/g, ''); // Remove non-digits
+    
+    // Auto-format as DD/MM/YYYY
+    let formatted = '';
+    if (digits.length >= 1) {
+      formatted += digits.slice(0, 2);
+    }
+    if (digits.length >= 3) {
+      formatted += '/' + digits.slice(2, 4);
+    }
+    if (digits.length >= 5) {
+      formatted += '/' + digits.slice(4, 8);
+    }
+    
+    setInputValue(formatted);
+    setIsDateSaved(false);
+
+    // Try to parse the complete date and update DatePicker immediately
+    if (digits.length === 8) {
+      const day = parseInt(digits.slice(0, 2));
+      const month = parseInt(digits.slice(2, 4)) - 1; // JS months are 0-indexed
+      const year = parseInt(digits.slice(4, 8));
+      
+      const parsedDate = new Date(year, month, day);
+      if (!isNaN(parsedDate.getTime())) {
+        // Update both DatePicker and visits array
+        onChange(parsedDate);
+        if (visitId && setVisits) {
+          const updated = visits.map((v: any) => v.id === visitId ? { ...v, date: parsedDate } : v);
+          setVisits(updated);
+        }
+        setIsDateSaved(true);
+      }
+    }
+  };
+
+  const handleBlur = () => {
+    // When the input loses focus, try to parse the current value
+    const digits = inputValue.replace(/\D/g, '');
+    if (digits.length === 8) {
+      const day = parseInt(digits.slice(0, 2));
+      const month = parseInt(digits.slice(2, 4)) - 1;
+      const year = parseInt(digits.slice(4, 8));
+      
+      const parsedDate = new Date(year, month, day);
+      if (!isNaN(parsedDate.getTime())) {
+        // Update both DatePicker and visits array
+        onChange(parsedDate);
+        if (visitId && setVisits) {
+          const updated = visits.map((v: any) => v.id === visitId ? { ...v, date: parsedDate } : v);
+          setVisits(updated);
+        }
+        setIsDateSaved(true);
+      }
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      <input
+        value={inputValue}
+        onChange={handleInputChange}
+        onBlur={handleBlur}
+        placeholder="DD/MM/YYYY"
+        className="date-picker-input"
+        style={{
+          paddingRight: isDateSaved ? '70px' : '40px',
+          borderColor: isDateSaved ? '#10b981' : undefined,
+        }}
+      />
+      {isDateSaved && (
+        <div
+          style={{
+            position: 'absolute',
+            right: '40px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: '#10b981',
+          }}
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+      )}
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+        style={{
+          position: 'absolute',
+          right: '12px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          cursor: 'pointer',
+        }}
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#64748b"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 export default function AddPatient() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,6 +219,8 @@ export default function AddPatient() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Submitting visits:', visits);
+    console.log('Visit dates:', visits.map(v => ({ id: v.id, date: v.date, dateType: typeof v.date })));
     setPatient({
       patientName: formData.patientName,
       gender: formData.gender,
@@ -57,7 +228,7 @@ export default function AddPatient() {
       gaAtBirth: formData.gaAtBirth,
       visits: visits.map(v => ({
         ...v,
-        date: v.date ? v.date.toISOString().split('T')[0] : ""
+        date: v.date instanceof Date ? v.date.toISOString().split('T')[0] : ""
       })),
     });
     navigate("/");
@@ -71,7 +242,7 @@ export default function AddPatient() {
       gaAtBirth: formData.gaAtBirth,
       termWeek: formData.termWeek,
       visits: visits.map(v => ({
-        date: v.date ? v.date.toISOString().split('T')[0] : "",
+        date: v.date instanceof Date ? v.date.toISOString().split('T')[0] : "",
         height: v.height,
         weight: v.weight,
         headCirc: v.headCirc
@@ -103,7 +274,7 @@ export default function AddPatient() {
         gaAtBirth: formData.gaAtBirth,
         visits: visits.map(v => ({
           ...v,
-          date: v.date ? v.date.toISOString().split('T')[0] : ""
+          date: v.date instanceof Date ? v.date.toISOString().split('T')[0] : ""
         })),
       });
     } catch (error) {
@@ -122,6 +293,19 @@ export default function AddPatient() {
           font-size: 14px;
           width: 100%;
           box-sizing: border-box;
+          transition: border-color 0.2s, box-shadow 0.2s;
+          background-color: #fff;
+        }
+        .date-picker-input:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        .react-datepicker-wrapper {
+          width: 100%;
+        }
+        .react-datepicker__input-container input {
+          width: 100%;
         }
       `}</style>
       <div style={s.card}>
@@ -176,11 +360,12 @@ export default function AddPatient() {
               onChange={(date: Date | null) => setFormData({ ...formData, dob: date })}
               dateFormat="dd/MM/yyyy"
               placeholderText="DD/MM/YYYY"
+              showMonthDropdown
               showYearDropdown
               scrollableYearDropdown
               yearDropdownItemNumber={100}
               maxDate={new Date()}
-              className="date-picker-input"
+              customInput={<DateInputWithIcon />}
               required
             />
           </div>
@@ -242,13 +427,34 @@ export default function AddPatient() {
                     }}
                     dateFormat="dd/MM/yyyy"
                     placeholderText="DD/MM/YYYY"
+                    showMonthDropdown
                     showYearDropdown
                     scrollableYearDropdown
                     yearDropdownItemNumber={100}
                     minDate={formData.dob || undefined}
                     maxDate={new Date()}
-                    className="date-picker-input"
+                    customInput={<DateInputWithIcon visitId={visit.id} visits={visits} setVisits={setVisits} />}
                   />
+                  {visit.date && formData.dob && formData.gaAtBirth && (() => {
+                    const chronologicalAge = calculateChronologicalAge(formData.dob, visit.date);
+                    const correctedGestationalWeek = calculateCorrectedGestationalWeek(formData.gaAtBirth, chronologicalAge);
+                    return (
+                      <div style={s.calculatedFields}>
+                        <div style={s.calculatedField}>
+                          <span style={s.calculatedLabel}>Chronological Age:</span>
+                          <span style={s.calculatedValue}>
+                            {chronologicalAge !== null ? `${chronologicalAge.toFixed(1)} weeks` : '-'}
+                          </span>
+                        </div>
+                        <div style={s.calculatedField}>
+                          <span style={s.calculatedLabel}>Corrected Gestational Week:</span>
+                          <span style={s.calculatedValue}>
+                            {correctedGestationalWeek !== null ? `${correctedGestationalWeek.toFixed(1)} weeks` : '-'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div style={s.row}>
                   <div style={{ ...s.formGroup, flex: 1 }}>
@@ -379,6 +585,27 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 11,
     color: "#94a3b8",
     margin: "4px 0 0 0",
+  },
+  calculatedFields: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: "#f0f9ff",
+    borderRadius: 6,
+    border: "1px solid #bae6fd",
+  },
+  calculatedField: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginBottom: 4,
+    fontSize: 12,
+  },
+  calculatedLabel: {
+    color: "#475569",
+    fontWeight: 500,
+  },
+  calculatedValue: {
+    color: "#0284c7",
+    fontWeight: 600,
   },
   divider: {
     borderTop: "1px solid #e2e8f0",

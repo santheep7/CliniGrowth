@@ -80,9 +80,9 @@ interface ChartPoint {
   height: number | null;
   weight: number | null;
   headCirc: number | null;
-  l_p3: number | null; l_p10: number | null; l_p50: number | null; l_p90: number | null; l_p97: number | null;
-  hc_p3: number | null; hc_p10: number | null; hc_p50: number | null; hc_p90: number | null; hc_p97: number | null;
-  w_p3: number | null; w_p10: number | null; w_p50: number | null; w_p90: number | null; w_p97: number | null;
+  l_p3: number | null; l_p15: number | null; l_p50: number | null; l_p85: number | null; l_p97: number | null;
+  hc_p3: number | null; hc_p15: number | null; hc_p50: number | null; hc_p85: number | null; hc_p97: number | null;
+  w_p3: number | null; w_p15: number | null; w_p50: number | null; w_p85: number | null; w_p97: number | null;
 }
 
 // Steps for sequential form
@@ -105,8 +105,8 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
   const t = (x - lo.x) / (hi.x - lo.x);
   const lerp = (a: number, b: number) => parseFloat((a + t * (b - a)).toFixed(2));
   return {
-    p3: lerp(lo.p3, hi.p3), p10: lerp(lo.p10, hi.p10), p50: lerp(lo.p50, hi.p50),
-    p90: lerp(lo.p90, hi.p90), p97: lerp(lo.p97, hi.p97),
+    p3: lerp(lo.p3, hi.p3), p15: lerp(lo.p15, hi.p15), p50: lerp(lo.p50, hi.p50),
+    p85: lerp(lo.p85, hi.p85), p97: lerp(lo.p97, hi.p97),
   };
 }
 
@@ -155,9 +155,9 @@ function buildChartData(visits: Visit[], dob: string, gaAtBirth: number, gender:
     return {
       week: w, weekLabel: `${w}w`,
       height: null, weight: null, headCirc: null,
-      l_p3: l?.p3 ?? null, l_p10: l?.p10 ?? null, l_p50: l?.p50 ?? null, l_p90: l?.p90 ?? null, l_p97: l?.p97 ?? null,
-      hc_p3: hc?.p3 ?? null, hc_p10: hc?.p10 ?? null, hc_p50: hc?.p50 ?? null, hc_p90: hc?.p90 ?? null, hc_p97: hc?.p97 ?? null,
-      w_p3: wt?.p3 ?? null, w_p10: wt?.p10 ?? null, w_p50: wt?.p50 ?? null, w_p90: wt?.p90 ?? null, w_p97: wt?.p97 ?? null,
+      l_p3: l?.p3 ?? null, l_p15: l?.p15 ?? null, l_p50: l?.p50 ?? null, l_p85: l?.p85 ?? null, l_p97: l?.p97 ?? null,
+      hc_p3: hc?.p3 ?? null, hc_p15: hc?.p15 ?? null, hc_p50: hc?.p50 ?? null, hc_p85: hc?.p85 ?? null, hc_p97: hc?.p97 ?? null,
+      w_p3: wt?.p3 ?? null, w_p15: wt?.p15 ?? null, w_p50: wt?.p50 ?? null, w_p85: wt?.p85 ?? null, w_p97: wt?.p97 ?? null,
     };
   });
 
@@ -175,9 +175,9 @@ function buildChartData(visits: Visit[], dob: string, gaAtBirth: number, gender:
         height: v.height ? parseFloat(v.height) : null,
         weight: v.weight ? parseFloat(v.weight) : null,
         headCirc: v.headCirc ? parseFloat(v.headCirc) : null,
-        l_p3: l?.p3 ?? null, l_p10: l?.p10 ?? null, l_p50: l?.p50 ?? null, l_p90: l?.p90 ?? null, l_p97: l?.p97 ?? null,
-        hc_p3: hc?.p3 ?? null, hc_p10: hc?.p10 ?? null, hc_p50: hc?.p50 ?? null, hc_p90: hc?.p90 ?? null, hc_p97: hc?.p97 ?? null,
-        w_p3: wt?.p3 ?? null, w_p10: wt?.p10 ?? null, w_p50: wt?.p50 ?? null, w_p90: wt?.p90 ?? null, w_p97: wt?.p97 ?? null,
+        l_p3: l?.p3 ?? null, l_p15: l?.p15 ?? null, l_p50: l?.p50 ?? null, l_p85: l?.p85 ?? null, l_p97: l?.p97 ?? null,
+        hc_p3: hc?.p3 ?? null, hc_p15: hc?.p15 ?? null, hc_p50: hc?.p50 ?? null, hc_p85: hc?.p85 ?? null, hc_p97: hc?.p97 ?? null,
+        w_p3: wt?.p3 ?? null, w_p15: wt?.p15 ?? null, w_p50: wt?.p50 ?? null, w_p85: wt?.p85 ?? null, w_p97: wt?.p97 ?? null,
       };
     });
 
@@ -229,20 +229,20 @@ interface FalteringAlert {
   drop?: number;
 }
 
-function getBand(value: number, p3: number | null, p10: number | null, p50: number | null, p90: number | null, p97: number | null): number {
-  if (p3 == null || p10 == null || p50 == null || p90 == null || p97 == null) return -1;
+function getBand(value: number, p3: number | null, p15: number | null, p50: number | null, p85: number | null, p97: number | null): number {
+  if (p3 == null || p15 == null || p50 == null || p85 == null || p97 == null) return -1;
   // Use a small tolerance (0.05 cm / 0.05 kg) to avoid floating-point false positives
   // at the boundary between bands
   const EPS = 0.05;
   if (value < p3  - EPS) return 0;
-  if (value < p10 - EPS) return 1;
+  if (value < p15 - EPS) return 1;
   if (value < p50 - EPS) return 2;
-  if (value < p90 - EPS) return 3;
+  if (value < p85 - EPS) return 3;
   if (value < p97 - EPS) return 4;
   return 5;
 }
 
-const BAND_LABELS = ["<3rd", "3–10th", "10–50th", "50–90th", "90–97th", ">97th"];
+const BAND_LABELS = ["<3rd", "3–15th", "15–50th", "50–85th", "85–97th", ">97th"];
 
 function detectFaltering(chartData: ChartPoint[]): FalteringAlert[] {
   const visitPts = chartData
@@ -255,14 +255,14 @@ function detectFaltering(chartData: ChartPoint[]): FalteringAlert[] {
     key: "Weight" | "Length" | "Head Circ.";
     val: (d: ChartPoint) => number | null;
     p3:  (d: ChartPoint) => number | null;
-    p10: (d: ChartPoint) => number | null;
+    p15: (d: ChartPoint) => number | null;
     p50: (d: ChartPoint) => number | null;
-    p90: (d: ChartPoint) => number | null;
+    p85: (d: ChartPoint) => number | null;
     p97: (d: ChartPoint) => number | null;
   }> = [
-    { key: "Weight",     val: d => d.weight,   p3: d => d.w_p3, p10: d => d.w_p10, p50: d => d.w_p50, p90: d => d.w_p90, p97: d => d.w_p97 },
-    { key: "Length",     val: d => d.height,   p3: d => d.l_p3, p10: d => d.l_p10, p50: d => d.l_p50, p90: d => d.l_p90, p97: d => d.l_p97 },
-    { key: "Head Circ.", val: d => d.headCirc, p3: d => d.hc_p3, p10: d => d.hc_p10, p50: d => d.hc_p50, p90: d => d.hc_p90, p97: d => d.hc_p97 },
+    { key: "Weight",     val: d => d.weight,   p3: d => d.w_p3, p15: d => d.w_p15, p50: d => d.w_p50, p85: d => d.w_p85, p97: d => d.w_p97 },
+    { key: "Length",     val: d => d.height,   p3: d => d.l_p3, p15: d => d.l_p15, p50: d => d.l_p50, p85: d => d.l_p85, p97: d => d.l_p97 },
+    { key: "Head Circ.", val: d => d.headCirc, p3: d => d.hc_p3, p15: d => d.hc_p15, p50: d => d.hc_p50, p85: d => d.hc_p85, p97: d => d.hc_p97 },
   ];
 
   for (const m of metrics) {
@@ -270,7 +270,7 @@ function detectFaltering(chartData: ChartPoint[]): FalteringAlert[] {
 
     for (let i = 0; i < pts.length; i++) {
       const curr = pts[i];
-      const band = getBand(m.val(curr)!, m.p3(curr), m.p10(curr), m.p50(curr), m.p90(curr), m.p97(curr));
+      const band = getBand(m.val(curr)!, m.p3(curr), m.p15(curr), m.p50(curr), m.p85(curr), m.p97(curr));
       if (band < 0) continue;
 
       // Alert type 1: measurement is below the 3rd percentile at any visit
@@ -289,7 +289,7 @@ function detectFaltering(chartData: ChartPoint[]): FalteringAlert[] {
       // Alert type 2: crossed ≥2 bands downward from previous visit
       if (i > 0) {
         const prev = pts[i - 1];
-        const bandPrev = getBand(m.val(prev)!, m.p3(prev), m.p10(prev), m.p50(prev), m.p90(prev), m.p97(prev));
+        const bandPrev = getBand(m.val(prev)!, m.p3(prev), m.p15(prev), m.p50(prev), m.p85(prev), m.p97(prev));
         if (bandPrev < 0) continue;
         const drop = bandPrev - band;
         if (drop >= 2) {
@@ -1034,8 +1034,9 @@ export default function GrowChart() {
   // ── Page mount animation ────────────────────────────────────────────────────
   useEffect(() => {
     const ctx = gsap.context(() => {
-      gsap.from(formCardRef.current, { x: -40, opacity: 0, duration: 0.7, ease: "power3.out" });
-      gsap.from(chartCardRef.current, { x: 40, opacity: 0, duration: 0.7, ease: "power3.out", delay: 0.15 });
+      if (chartCardRef.current) {
+        gsap.from(chartCardRef.current, { x: 40, opacity: 0, duration: 0.7, ease: "power3.out" });
+      }
     }, pageRef);
     return () => ctx.revert();
   }, []);
@@ -1221,14 +1222,14 @@ export default function GrowChart() {
                   shortLabel: string;
                   val: (d: ChartPoint) => number | null;
                   p3:  (d: ChartPoint) => number | null;
-                  p10: (d: ChartPoint) => number | null;
+                  p15: (d: ChartPoint) => number | null;
                   p50: (d: ChartPoint) => number | null;
-                  p90: (d: ChartPoint) => number | null;
+                  p85: (d: ChartPoint) => number | null;
                   p97: (d: ChartPoint) => number | null;
                 }> = [
-                  { key: "height",   shortLabel: "L",  val: d => d.height,   p3: d => d.l_p3,  p10: d => d.l_p10,  p50: d => d.l_p50,  p90: d => d.l_p90,  p97: d => d.l_p97  },
-                  { key: "weight",   shortLabel: "W",  val: d => d.weight,   p3: d => d.w_p3,  p10: d => d.w_p10,  p50: d => d.w_p50,  p90: d => d.w_p90,  p97: d => d.w_p97  },
-                  { key: "headCirc", shortLabel: "HC", val: d => d.headCirc, p3: d => d.hc_p3, p10: d => d.hc_p10, p50: d => d.hc_p50, p90: d => d.hc_p90, p97: d => d.hc_p97 },
+                  { key: "height",   shortLabel: "L",  val: d => d.height,   p3: d => d.l_p3,  p15: d => d.l_p15,  p50: d => d.l_p50,  p85: d => d.l_p85,  p97: d => d.l_p97  },
+                  { key: "weight",   shortLabel: "W",  val: d => d.weight,   p3: d => d.w_p3,  p15: d => d.w_p15,  p50: d => d.w_p50,  p85: d => d.w_p85,  p97: d => d.w_p97  },
+                  { key: "headCirc", shortLabel: "HC", val: d => d.headCirc, p3: d => d.hc_p3, p15: d => d.hc_p15, p50: d => d.hc_p50, p85: d => d.hc_p85, p97: d => d.hc_p97 },
                 ];
 
                 const seen = new Set<string>();
@@ -1237,7 +1238,7 @@ export default function GrowChart() {
                   const pts = visitPts.filter(d => m.val(d) != null && d.week <= splitWeekClamped);
                   for (let i = 0; i < pts.length; i++) {
                     const curr = pts[i];
-                    const band = getBand(m.val(curr)!, m.p3(curr), m.p10(curr), m.p50(curr), m.p90(curr), m.p97(curr));
+                    const band = getBand(m.val(curr)!, m.p3(curr), m.p15(curr), m.p50(curr), m.p85(curr), m.p97(curr));
                     if (band < 0) continue;
 
                     const addArrow = (label: string) => {
@@ -1251,7 +1252,7 @@ export default function GrowChart() {
                       addArrow(`${m.shortLabel}<3rd`);
                     } else if (i > 0) {
                       const prev = pts[i - 1];
-                      const bandPrev = getBand(m.val(prev)!, m.p3(prev), m.p10(prev), m.p50(prev), m.p90(prev), m.p97(prev));
+                      const bandPrev = getBand(m.val(prev)!, m.p3(prev), m.p15(prev), m.p50(prev), m.p85(prev), m.p97(prev));
                       if (bandPrev >= 0 && bandPrev - band >= 2) {
                         addArrow(`${m.shortLabel}↓${bandPrev - band}`);
                       }

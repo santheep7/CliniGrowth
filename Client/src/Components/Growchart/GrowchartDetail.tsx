@@ -45,8 +45,8 @@ interface ChartPoint {
   week: number;
   weekLabel: string;
   patient: number | null;
-  boys: Record<"p3" | "p10" | "p50" | "p90" | "p97", number | null>;
-  girls: Record<"p3" | "p10" | "p50" | "p90" | "p97", number | null>;
+  boys: Record<"p3" | "p15" | "p50" | "p85" | "p97", number | null>;
+  girls: Record<"p3" | "p15" | "p50" | "p85" | "p97", number | null>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,9 +60,9 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
     const factor = 1 + (weeksPast / 250) * 0.7;
     return {
       p3:  parseFloat((maxPt.p3  * factor).toFixed(2)),
-      p10: parseFloat((maxPt.p10 * factor).toFixed(2)),
+      p15: parseFloat((maxPt.p15 * factor).toFixed(2)),
       p50: parseFloat((maxPt.p50 * factor).toFixed(2)),
-      p90: parseFloat((maxPt.p90 * factor).toFixed(2)),
+      p85: parseFloat((maxPt.p85 * factor).toFixed(2)),
       p97: parseFloat((maxPt.p97 * factor).toFixed(2)),
     };
   }
@@ -70,7 +70,7 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
   const hi = sorted.find(d => d.x > x)!;
   const t = (x - lo.x) / (hi.x - lo.x);
   const l = (a: number, b: number) => parseFloat((a + t * (b - a)).toFixed(2));
-  return { p3: l(lo.p3, hi.p3), p10: l(lo.p10, hi.p10), p50: l(lo.p50, hi.p50), p90: l(lo.p90, hi.p90), p97: l(lo.p97, hi.p97) };
+  return { p3: l(lo.p3, hi.p3), p15: l(lo.p15, hi.p15), p50: l(lo.p50, hi.p50), p85: l(lo.p85, hi.p85), p97: l(lo.p97, hi.p97) };
 }
 
 function cgaWeek(dob: string, gaAtBirth: number, visitDate: string): number {
@@ -147,8 +147,8 @@ function buildData(visits: Visit[], dob: string, gaAtBirth: number, metric: Metr
     }
     return {
       week: w, weekLabel: label, patient: null,
-      boys:  { p3: b?.p3 ?? null, p10: b?.p10 ?? null, p50: b?.p50 ?? null, p90: b?.p90 ?? null, p97: b?.p97 ?? null },
-      girls: { p3: g?.p3 ?? null, p10: g?.p10 ?? null, p50: g?.p50 ?? null, p90: g?.p90 ?? null, p97: g?.p97 ?? null },
+      boys:  { p3: b?.p3 ?? null, p15: b?.p15 ?? null, p50: b?.p50 ?? null, p85: b?.p85 ?? null, p97: b?.p97 ?? null },
+      girls: { p3: g?.p3 ?? null, p15: g?.p15 ?? null, p50: g?.p50 ?? null, p85: g?.p85 ?? null, p97: g?.p97 ?? null },
     };
   });
 
@@ -164,8 +164,8 @@ function buildData(visits: Visit[], dob: string, gaAtBirth: number, metric: Metr
       week: parseFloat(cga.toFixed(1)),
       weekLabel: `${tooltipLbl}\n${formatDate(v.date)}`,
       patient: raw ? parseFloat(raw) : null,
-      boys:  { p3: b?.p3 ?? null, p10: b?.p10 ?? null, p50: b?.p50 ?? null, p90: b?.p90 ?? null, p97: b?.p97 ?? null },
-      girls: { p3: g?.p3 ?? null, p10: g?.p10 ?? null, p50: g?.p50 ?? null, p90: g?.p90 ?? null, p97: g?.p97 ?? null },
+      boys:  { p3: b?.p3 ?? null, p15: b?.p15 ?? null, p50: b?.p50 ?? null, p85: b?.p85 ?? null, p97: b?.p97 ?? null },
+      girls: { p3: g?.p3 ?? null, p15: g?.p15 ?? null, p50: g?.p50 ?? null, p85: g?.p85 ?? null, p97: g?.p97 ?? null },
     };
     const idx = pts.findIndex(r => Math.abs(r.week - vp.week) < 0.5 && r.patient === null);
     if (idx >= 0) pts[idx] = { ...pts[idx], patient: vp.patient, weekLabel: vp.weekLabel };
@@ -180,12 +180,12 @@ const PERCENTILE_COLORS = ["#22d3ee", "#34d399", "#3b82f6", "#f59e0b", "#f43f5e"
 const BOYS_COLORS   = PERCENTILE_COLORS;
 const GIRLS_COLORS  = PERCENTILE_COLORS;
 const PATIENT_COLOR = "#111827";
-const PCTS = ["3rd", "10th", "50th", "90th", "97th"] as const;
+const PCTS = ["3rd", "15th", "50th", "85th", "97th"] as const;
 
 function buildSeries(data: ChartPoint[], genderView: GenderView) {
   const showBoys  = genderView === "both" || genderView === "male";
   const showGirls = genderView === "both" || genderView === "female";
-  const percentileKeys = ["p3", "p10", "p50", "p90", "p97"] as const;
+  const percentileKeys = ["p3", "p15", "p50", "p85", "p97"] as const;
   const datasets: Array<any> = [];
 
   if (showBoys) {

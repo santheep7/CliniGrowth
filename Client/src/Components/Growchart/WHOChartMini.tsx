@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -26,6 +26,7 @@ import {
   WHO_BMI_GIRLS,
   type RefPoint,
 } from "./referenceData";
+import { BMID3Chart } from "./BMID3Chart";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler, Title);
 
@@ -586,9 +587,9 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
     const factor = 1 + (weeksPast / 250) * 0.7;
     return {
       p3:  parseFloat((maxPt.p3  * factor).toFixed(2)),
-      p10: parseFloat((maxPt.p10 * factor).toFixed(2)),
+      p15: parseFloat((maxPt.p15 * factor).toFixed(2)),
       p50: parseFloat((maxPt.p50 * factor).toFixed(2)),
-      p90: parseFloat((maxPt.p90 * factor).toFixed(2)),
+      p85: parseFloat((maxPt.p85 * factor).toFixed(2)),
       p97: parseFloat((maxPt.p97 * factor).toFixed(2)),
     };
   }
@@ -596,7 +597,7 @@ function interpolate(data: RefPoint[], x: number): Omit<RefPoint, "x"> | null {
   const hi = sorted.find((d) => d.x > x)!;
   const t = (x - lo.x) / (hi.x - lo.x);
   const l = (a: number, b: number) => parseFloat((a + t * (b - a)).toFixed(2));
-  return { p3: l(lo.p3, hi.p3), p10: l(lo.p10, hi.p10), p50: l(lo.p50, hi.p50), p90: l(lo.p90, hi.p90), p97: l(lo.p97, hi.p97) };
+  return { p3: l(lo.p3, hi.p3), p15: l(lo.p15, hi.p15), p50: l(lo.p50, hi.p50), p85: l(lo.p85, hi.p85), p97: l(lo.p97, hi.p97) };
 }
 
 function formatWeekLabel(week: number) {
@@ -613,9 +614,9 @@ function ceilTo(v: number, step: number) {
   return Math.ceil(v / step) * step;
 }
 
-const PERCENTILE_COLORS = ["#22d3ee", "#34d399", "#3b82f6", "#f59e0b", "#f43f5e"];
-const PCTS = ["3rd", "10th", "50th", "90th", "97th"] as const;
-const PERCENTILE_KEYS = ["p3", "p10", "p50", "p90", "p97"] as const;
+const PERCENTILE_COLORS = ["#e11d48", "#f59e0b", "#15803d", "#f59e0b", "#e11d48"];
+const PCTS = ["3rd", "15th", "50th", "85th", "97th"] as const;
+const PERCENTILE_KEYS = ["p3", "p15", "p50", "p85", "p97"] as const;
 const PATIENT_COLOR = "#111827";
 
 function getRefData(metric: Metric, isMale: boolean): RefPoint[] {
@@ -663,8 +664,9 @@ function buildDatasets(
         }),
         borderColor: PERCENTILE_COLORS[idx],
         borderWidth: pKey === "p50" ? 2 : 1,
-        borderDash: sex === "female" ? [4, 3] : [],
-        tension: 0.35,
+        borderDash: genderView === "both" && sex === "female" ? [4, 3] : [],
+        tension: metric === "bmi" ? 0.4 : 0.35,
+        cubicInterpolationMode: metric === "bmi" ? "default" : "monotone",
         pointRadius: 0,
         fill: false,
         spanGaps: true,
@@ -784,14 +786,27 @@ function SingleMetricChart({
     metric === "bmi"    ? "BMI for Age"    : "Head Circumference for Age";
   const genderTitle = genderView === "male" ? "Boys" : genderView === "female" ? "Girls" : "Boys & Girls";
   const pdfHeading = `${metricTitle} · ${genderTitle}`;
+  const posterAccent = genderView === "male" ? "#2563eb" : genderView === "female" ? "#db2777" : "#0f172a";
   const unitLabel     = metric === "weight" ? "kg" : metric === "bmi" ? "kg/m\u00B2" : "cm";
-  const yStep         = metric === "weight" ? 1 : metric === "bmi" ? 2 : 5;
-  const yMinResolved  = metric === "weight" ? 2 : metric === "height" ? 35 : metric === "bmi" ? 8 : 25;
+  const yStep         = metric === "weight" ? 1 : metric === "bmi" ? 1 : 5;
+  const yMinResolved  = metric === "weight" ? 2 : metric === "height" ? 35 : metric === "bmi" ? 10 : 25;
 
   const xMax = useMemo(() => {
+    if (metric === "bmi") {
+      return 40 + 5 * 52; // BMI: term to 5 years (data starts at 40 weeks)
+    }
     const weeks = patientData.map((p) => p.week).filter(Number.isFinite);
     return weeks.length ? Math.max(40 + 260, Math.ceil(Math.max(...weeks)) + 4) : 40 + 260;
-  }, [patientData]);
+  }, [patientData, metric]);
+
+  const xMin = useMemo(() => {
+    return 40; // All metrics start at term (40 weeks)
+  }, []);
+
+  const posterAgeSpan = useMemo(() => {
+    const years = Math.floor((xMax - 40) / 52);
+    return years >= 1 ? `Birth to ${years} year${years > 1 ? "s" : ""}` : "Birth to 12 months";
+  }, [xMax]);
 
   const datasets = useMemo(
     () => buildDatasets(patientData, metric, genderView),
@@ -801,6 +816,9 @@ function SingleMetricChart({
   const chartData: ChartData<"line"> = useMemo(() => ({ datasets }), [datasets]);
 
   const maxY = useMemo(() => {
+    if (metric === "bmi") {
+      return 21; // BMI: fixed y-axis range 10-21
+    }
     const vals: number[] = [];
     datasets.forEach((ds) => {
       (ds.data as any[]).forEach((pt) => {
@@ -809,7 +827,7 @@ function SingleMetricChart({
     });
     const maxVal = vals.length ? Math.max(...vals) : yMinResolved + yStep * 4;
     return Math.max(yMinResolved + yStep * 4, ceilTo(maxVal, yStep));
-  }, [datasets, yMinResolved, yStep]);
+  }, [datasets, yMinResolved, yStep, metric]);
 
   const options: ChartOptions<"line"> = useMemo(() => ({
     responsive: true,
@@ -819,7 +837,7 @@ function SingleMetricChart({
     scales: {
       x: {
         type: "linear",
-        min: 40,
+        min: xMin,
         max: xMax,
         title: {
           display: true,
@@ -830,6 +848,7 @@ function SingleMetricChart({
         },
         afterBuildTicks: (axis: { ticks: { value: number }[] }) => {
           const customTicks: { value: number }[] = [];
+          // All metrics: term (40 weeks) to 5 years
           customTicks.push({ value: 40 });
           for (let y = 0; y < 5; y++) {
             if (y > 0) customTicks.push({ value: 40 + y * 52 });
@@ -840,7 +859,18 @@ function SingleMetricChart({
           customTicks.push({ value: 40 + 5 * 52 });
           axis.ticks = customTicks;
         },
-        grid: { color: "#e2e8f0" },
+        grid: {
+          color: (ctx: any) => {
+            const v = Number(ctx.tick?.value ?? 0);
+            const isYearOrTerm = Math.abs(v - 40) < 0.5 || Math.abs((v - 40) % 52) < 0.5;
+            return isYearOrTerm ? "#94a3b8" : "#e2e8f0";
+          },
+          lineWidth: (ctx: any) => {
+            const v = Number(ctx.tick?.value ?? 0);
+            const isYearOrTerm = Math.abs(v - 40) < 0.5 || Math.abs((v - 40) % 52) < 0.5;
+            return isYearOrTerm ? 1.5 : 1;
+          },
+        },
         ticks: {
           color: axisColor,
           autoSkip: false,
@@ -893,15 +923,42 @@ function SingleMetricChart({
         },
       },
     },
-  }), [axisColor, xMax, yMinResolved, maxY, yStep, unitLabel]);
+  }), [axisColor, xMax, xMin, yMinResolved, maxY, yStep, unitLabel, metric]);
 
   return (
     <div style={{ width: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 19, fontWeight: 800, color: posterAccent, letterSpacing: 0.3, textTransform: "uppercase" as const }}>
+            {metricTitle.replace(" for Age", "-for-age")} {genderView === "both" ? "Boys & Girls" : genderTitle.toUpperCase()}
+          </div>
+          <div style={{ height: 2, width: 130, backgroundColor: posterAccent, margin: "4px 0 6px" }} />
+          <div style={{ fontSize: 12, color: "#64748b" }}>{posterAgeSpan} (percentiles) · WHO Child Growth Standards</div>
+        </div>
         <PdfButton wrapperRef={chartWrapperRef} filename={pdfFilename} heading={pdfHeading} />
       </div>
-      <div ref={chartWrapperRef} style={{ width: "100%", height, position: "relative", backgroundColor: "#fff" }}>
-        <Line data={chartData} options={options} plugins={[percentileLabelsPlugin]} />
+      <div
+        ref={chartWrapperRef}
+        style={{
+          width: "100%",
+          height,
+          position: "relative",
+          backgroundColor: "#fff",
+          border: metric === "bmi" ? `4px solid ${posterAccent}` : `2px solid ${posterAccent}`,
+          borderRadius: metric === "bmi" ? 4 : 8,
+          padding: metric === "bmi" ? 6 : 10,
+          boxSizing: "border-box",
+        }}
+      >
+        {metric === "bmi" ? (
+          <BMID3Chart
+            patientData={patientData}
+            genderView={genderView}
+            height={height - 20}
+          />
+        ) : (
+          <Line data={chartData} options={options} plugins={[percentileLabelsPlugin]} />
+        )}
       </div>
     </div>
   );
