@@ -560,12 +560,7 @@ export default function GrowchartDetail() {
           display: grid;
           gap: 24px;
           align-items: start;
-          grid-template-columns: ${activeMetric === "all" || formCollapsed ? "auto 1fr" : "380px 1fr"};
-        }
-        @media (max-width: 1024px) {
-          .layout-responsive-grid {
-            grid-template-columns: 1fr !important;
-          }
+          grid-template-columns: 1fr;
         }
       `}</style>
 

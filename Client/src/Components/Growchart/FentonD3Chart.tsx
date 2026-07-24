@@ -430,6 +430,28 @@ export function FentonD3Chart({
       unit: string,
       metricName: string
     ) => {
+      // Draw connecting line
+      if (pts.length > 1) {
+        const lineData = pts.map((d) => ({
+          x: xScale(d.week),
+          y: yScale(unit === "kg" ? mapWeightValue(d.value) : mapCmValue(d.value)),
+        }));
+        const straightLineGen = d3
+          .line<{ x: number; y: number }>()
+          .x((d) => d.x)
+          .y((d) => d.y)
+          .curve(d3.curveLinear);
+        g.append("path")
+          .datum(lineData)
+          .attr("d", straightLineGen)
+          .attr("fill", "none")
+          .attr("stroke", color)
+          .attr("stroke-width", 2.5)
+          .attr("stroke-dasharray", "4,3")
+          .attr("stroke-linejoin", "round")
+          .attr("stroke-linecap", "round");
+      }
+
       g.selectAll(`.patient-${metricName}`)
         .data(pts)
         .enter()

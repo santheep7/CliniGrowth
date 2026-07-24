@@ -109,7 +109,7 @@ export function WHOD3Chart({ metric, patientData, genderView, height = 500 }: WH
     if (!svgRef.current || !wrapperRef.current) return;
 
     const wrapperWidth = wrapperRef.current.clientWidth || 800;
-    const margin = { top: 16, right: 52, bottom: 72, left: 52 };
+    const margin = { top: 16, right: 52, bottom: 56, left: 52 };
     const innerWidth = wrapperWidth - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
@@ -193,7 +193,7 @@ export function WHOD3Chart({ metric, patientData, genderView, height = 500 }: WH
       .append("text")
       .attr("class", "x-month-label")
       .attr("x", (d) => xScale(d.value))
-      .attr("y", innerHeight + 16)
+      .attr("y", innerHeight + 14)
       .attr("text-anchor", "middle")
       .attr("fill", "#475569")
       .attr("font-size", 9.5)
@@ -214,7 +214,7 @@ export function WHOD3Chart({ metric, patientData, genderView, height = 500 }: WH
       .append("text")
       .attr("class", "x-year-label")
       .attr("x", (d) => xScale(d.value))
-      .attr("y", innerHeight + 32)
+      .attr("y", innerHeight + 28)
       .attr("text-anchor", "middle")
       .attr("fill", "#1e293b")
       .attr("font-size", 11)
@@ -241,7 +241,7 @@ export function WHOD3Chart({ metric, patientData, genderView, height = 500 }: WH
     // Axis titles
     g.append("text")
       .attr("x", innerWidth / 2)
-      .attr("y", innerHeight + 58)
+      .attr("y", innerHeight + 48)
       .attr("text-anchor", "middle")
       .attr("fill", "#1e293b")
       .attr("font-size", 12)

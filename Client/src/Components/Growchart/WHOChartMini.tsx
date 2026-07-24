@@ -962,7 +962,7 @@ function SingleMetricChart({
             metric={metric}
             patientData={patientData}
             genderView={genderView}
-            height={height - 20}
+            height={height}
           />
         )}
       </div>
