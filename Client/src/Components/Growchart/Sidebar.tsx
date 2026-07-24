@@ -70,7 +70,7 @@ const MenuIcon = () => (
 export default function Sidebar({ onWidthChange }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { patient } = useGrowchart();
+  const { patient, patientWho } = useGrowchart();
   const [collapsed, setCollapsed] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -115,8 +115,8 @@ export default function Sidebar({ onWidthChange }: SidebarProps) {
     {
       label: "WHO Chart",
       icon: <BarChartIcon />,
-      disabled: !patient,
-      submenu: patient ? [
+      disabled: !patientWho,
+      submenu: patientWho ? [
         { label: "View Chart", path: "/detail" },
         { label: "Edit Patient", path: "/edit-patient" },
       ] : undefined,
@@ -134,6 +134,11 @@ export default function Sidebar({ onWidthChange }: SidebarProps) {
   };
 
   const handleNavigate = (path: string) => {
+    // Set chart type before navigating to edit patient
+    if (path === "/edit-patient") {
+      const chartType = location.pathname === "/detail" ? "who" : "fenton";
+      localStorage.setItem("gc_chartType", chartType);
+    }
     navigate(path);
     if (isMobile) {
       setMobileOpen(false);

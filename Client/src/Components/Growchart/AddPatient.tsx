@@ -184,8 +184,17 @@ function DateInputWithIcon({ value, onClick, onChange, visitId, visits, setVisit
 export default function AddPatient() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { setPatient, patient } = useGrowchart();
+  const { setPatient, patient, setPatientWho, patientWho } = useGrowchart();
   const isEditMode = location.pathname === "/edit-patient";
+  
+  // Determine if we're editing for WHO or Fenton based on previous chart type
+  const previousChartType = localStorage.getItem("gc_chartType") || "fenton";
+  const isWhoMode = previousChartType === "who";
+  const currentPatient = isWhoMode ? patientWho : patient;
+  const setCurrentPatient = isWhoMode ? setPatientWho : setPatient;
+
+  // Debug: log which mode we're in
+  console.log('AddPatient mode:', { isWhoMode, previousChartType, hasPatientWho: !!patientWho, hasPatient: !!patient });
 
   const [formData, setFormData] = useState({
     patientName: "",
@@ -200,28 +209,28 @@ export default function AddPatient() {
 
   // Load existing patient data in edit mode
   useEffect(() => {
-    if (isEditMode && patient) {
+    if (isEditMode && currentPatient) {
       setFormData({
-        patientName: patient.patientName,
-        gender: patient.gender as "male" | "female",
-        dob: patient.dob ? new Date(patient.dob) : null,
-        gaAtBirth: patient.gaAtBirth,
+        patientName: currentPatient.patientName,
+        gender: currentPatient.gender as "male" | "female",
+        dob: currentPatient.dob ? new Date(currentPatient.dob) : null,
+        gaAtBirth: currentPatient.gaAtBirth,
         termWeek: 50,
       });
-      setVisits(patient.visits.length > 0 ? patient.visits.map(v => ({
+      setVisits(currentPatient.visits.length > 0 ? currentPatient.visits.map(v => ({
         ...v,
         date: v.date ? new Date(v.date) : null
       })) : [
         { id: crypto.randomUUID(), date: null, height: "", weight: "", headCirc: "" }
       ]);
     }
-  }, [isEditMode, patient]);
+  }, [isEditMode, currentPatient]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     console.log('Submitting visits:', visits);
     console.log('Visit dates:', visits.map(v => ({ id: v.id, date: v.date, dateType: typeof v.date })));
-    setPatient({
+    setCurrentPatient({
       patientName: formData.patientName,
       gender: formData.gender,
       dob: formData.dob ? formData.dob.toISOString().split('T')[0] : "",
@@ -231,7 +240,9 @@ export default function AddPatient() {
         date: v.date instanceof Date ? v.date.toISOString().split('T')[0] : ""
       })),
     });
-    navigate("/");
+    // Navigate back to the appropriate chart type
+    const previousChartType = localStorage.getItem("gc_chartType") || "fenton";
+    navigate(previousChartType === "who" ? "/who-detail" : "/");
   };
 
   const handleSaveToDatabase = async () => {
@@ -267,7 +278,7 @@ export default function AddPatient() {
       alert('Patient saved to database successfully!');
       
       // Also update the context with the saved data
-      setPatient({
+      setCurrentPatient({
         patientName: formData.patientName,
         gender: formData.gender,
         dob: formData.dob ? formData.dob.toISOString().split('T')[0] : "",

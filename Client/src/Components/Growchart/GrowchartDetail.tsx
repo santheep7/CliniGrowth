@@ -24,6 +24,7 @@ import {
   WHO_HC_BOYS, WHO_HC_GIRLS,
   type RefPoint,
 } from "./referenceData";
+import { useGrowchart } from "./GrowchartContext";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler, Title);
 
@@ -420,6 +421,7 @@ const METRICS: { key: Metric; label: string; icon: string; yLabel: string; yStep
 
 export default function GrowchartDetail() {
   const navigate = useNavigate();
+  const { patientWho, setPatientWho, homeFormWho, setHomeFormWho } = useGrowchart();
 
   const [formCollapsed, setFormCollapsed] = useState(false);
 
@@ -440,15 +442,74 @@ export default function GrowchartDetail() {
     };
   }, [chartType]);
 
-  const [patientName, setPatientName] = useState(() => localStorage.getItem("gc_patientName") || "");
-  const [dob, setDob]                 = useState(() => localStorage.getItem("gc_dob") || "");
-  const [gender, setGender]           = useState<Gender>(() => (localStorage.getItem("gc_gender") as Gender) || "");
-  const [gaAtBirth, setGaAtBirth]     = useState(() => localStorage.getItem("gc_gaAtBirth") || "40");
-  const [visits, setVisits]           = useState<Visit[]>(() => getStorageItem<Visit[]>("gc_visits", [
-    { id: crypto.randomUUID(), date: "", height: "", weight: "", headCirc: "" },
-  ]));
-  const [activeMetric, setActiveMetric] = useState<Metric>(() => (localStorage.getItem("gc_activeMetric") as Metric) || "height");
-  const [genderView, setGenderView]     = useState<GenderView>(() => (localStorage.getItem("gc_genderView") as GenderView) || "male");
+  // Use WHO context data when in WHO mode, otherwise use localStorage for Fenton
+  const [patientName, setPatientName] = useState(() => {
+    if (chartType === "who") {
+      return homeFormWho.patientName;
+    }
+    return localStorage.getItem("gc_patientName") || "";
+  });
+  const [dob, setDob] = useState(() => {
+    if (chartType === "who") {
+      return homeFormWho.dob;
+    }
+    return localStorage.getItem("gc_dob") || "";
+  });
+  const [gender, setGender] = useState<Gender>(() => {
+    if (chartType === "who") {
+      return homeFormWho.gender;
+    }
+    return (localStorage.getItem("gc_gender") as Gender) || "";
+  });
+  const [gaAtBirth, setGaAtBirth] = useState(() => {
+    if (chartType === "who") {
+      return homeFormWho.gaAtBirth;
+    }
+    return localStorage.getItem("gc_gaAtBirth") || "40";
+  });
+  const [visits, setVisits] = useState<Visit[]>(() => {
+    if (chartType === "who") {
+      return homeFormWho.visits;
+    }
+    return getStorageItem<Visit[]>("gc_visits", [
+      { id: crypto.randomUUID(), date: "", height: "", weight: "", headCirc: "" },
+    ]);
+  });
+  const [activeMetric, setActiveMetric] = useState<Metric>(() => "height");
+  const [genderView, setGenderView] = useState<GenderView>(() => "male");
+
+  // Sync form changes to appropriate storage
+  useEffect(() => {
+    if (chartType === "who") {
+      setHomeFormWho({
+        patientName,
+        dob,
+        gender,
+        gaAtBirth,
+        visits,
+        plotted: false,
+      });
+    } else {
+      localStorage.setItem("gc_patientName", patientName);
+      localStorage.setItem("gc_dob", dob);
+      localStorage.setItem("gc_gender", gender);
+      localStorage.setItem("gc_gaAtBirth", gaAtBirth);
+      localStorage.setItem("gc_visits", JSON.stringify(visits));
+      localStorage.setItem("gc_activeMetric", activeMetric);
+      localStorage.setItem("gc_genderView", genderView);
+    }
+  }, [patientName, dob, gender, gaAtBirth, visits, activeMetric, genderView, chartType, setHomeFormWho]);
+
+  // When switching to WHO mode, load WHO context data into state
+  useEffect(() => {
+    if (chartType === "who") {
+      setPatientName(homeFormWho.patientName);
+      setDob(homeFormWho.dob);
+      setGender(homeFormWho.gender);
+      setGaAtBirth(homeFormWho.gaAtBirth);
+      setVisits(homeFormWho.visits);
+    }
+  }, [chartType, homeFormWho]);
 
   const pageRef      = useRef<HTMLDivElement>(null);
   const headerRef    = useRef<HTMLDivElement>(null);
@@ -456,16 +517,6 @@ export default function GrowchartDetail() {
   const controlsRef  = useRef<HTMLDivElement>(null);
   const chartCardRef = useRef<HTMLDivElement>(null);
   const tableCardRef = useRef<HTMLTableSectionElement>(null);
-
-  useEffect(() => {
-    localStorage.setItem("gc_patientName", patientName);
-    localStorage.setItem("gc_dob", dob);
-    localStorage.setItem("gc_gender", gender);
-    localStorage.setItem("gc_gaAtBirth", gaAtBirth);
-    localStorage.setItem("gc_visits", JSON.stringify(visits));
-    localStorage.setItem("gc_activeMetric", activeMetric);
-    localStorage.setItem("gc_genderView", genderView);
-  }, [patientName, dob, gender, gaAtBirth, visits, activeMetric, genderView]);
 
   useEffect(() => {
     const ctx = gsap.context(() => {
@@ -582,6 +633,140 @@ export default function GrowchartDetail() {
         </div>
 
         <div className="layout-responsive-grid">
+
+          {/* ─── Left Column: Patient Form ─── */}
+          <div ref={formCardRef} style={s.formCard}>
+            <div style={s.formTitle}>Patient Information</div>
+            
+            <div style={s.formGroup}>
+              <label style={s.label}>Patient Name</label>
+              <input
+                type="text"
+                value={patientName}
+                onChange={(e) => setPatientName(e.target.value)}
+                placeholder="Enter patient name"
+                style={s.input}
+              />
+            </div>
+
+            <div style={s.formGroup}>
+              <label style={s.label}>Gender</label>
+              <div style={s.genderOptions}>
+                <button
+                  type="button"
+                  onClick={() => setGender("male")}
+                  style={{
+                    ...s.genderButton,
+                    ...(gender === "male" ? s.genderButtonActive : {}),
+                  }}
+                >
+                  <span style={{ fontSize: 20 }}>♂</span>
+                  <span>Male</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGender("female")}
+                  style={{
+                    ...s.genderButton,
+                    ...(gender === "female" ? s.genderButtonActive : {}),
+                  }}
+                >
+                  <span style={{ fontSize: 20 }}>♀</span>
+                  <span>Female</span>
+                </button>
+              </div>
+            </div>
+
+            <div style={s.formGroup}>
+              <label style={s.label}>Date of Birth</label>
+              <input
+                type="date"
+                value={dob}
+                onChange={(e) => setDob(e.target.value)}
+                style={s.input}
+              />
+            </div>
+
+            <div style={s.formGroup}>
+              <label style={s.label}>Gestational Age at Birth (weeks)</label>
+              <input
+                type="number"
+                value={gaAtBirth}
+                onChange={(e) => setGaAtBirth(e.target.value)}
+                placeholder="e.g., 40"
+                min="22"
+                max="44"
+                step="0.5"
+                style={s.input}
+              />
+            </div>
+
+            <div style={s.divider} />
+
+            <div style={s.visitsHeader}>
+              <h3 style={s.sectionTitle}>Visits</h3>
+              <button type="button" onClick={handleAddVisit} style={s.addBtn}>+ Add Visit</button>
+            </div>
+
+            <div style={s.visitList}>
+              {visits.map((v, i) => (
+                <div key={v.id} style={s.visitCard}>
+                  <div style={s.visitCardHeader}>
+                    <span style={s.visitLabel}>Visit #{i + 1}</span>
+                    {visits.length > 1 && (
+                      <button type="button" onClick={() => handleRemoveVisit(v.id)} style={s.removeBtn}>Remove</button>
+                    )}
+                  </div>
+                  <div style={s.formGroup}>
+                    <label style={s.label}>Date</label>
+                    <input
+                      type="date"
+                      value={v.date}
+                      onChange={(e) => handleUpdateVisit(v.id, "date", e.target.value)}
+                      style={s.input}
+                    />
+                  </div>
+                  <div style={s.row}>
+                    <div style={{ ...s.formGroup, flex: 1 }}>
+                      <label style={s.label}>Weight (kg)</label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        value={v.weight}
+                        onChange={(e) => handleUpdateVisit(v.id, "weight", e.target.value)}
+                        style={s.input}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div style={{ ...s.formGroup, flex: 1 }}>
+                      <label style={s.label}>Length (cm)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={v.height}
+                        onChange={(e) => handleUpdateVisit(v.id, "height", e.target.value)}
+                        style={s.input}
+                        placeholder="0.0"
+                      />
+                    </div>
+                  </div>
+                  <div style={s.formGroup}>
+                    <label style={s.label}>Head Circumference (cm)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={v.headCirc}
+                      onChange={(e) => handleUpdateVisit(v.id, "headCirc", e.target.value)}
+                      style={s.input}
+                      placeholder="0.0"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleReset} style={s.resetBtn}>Reset Form</button>
+          </div>
 
           {/* ─── Right Column: Controls, Chart & Table ─── */}
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -864,6 +1049,112 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: "13px",
     fontWeight: 600,
     cursor: "pointer",
+    padding: "8px 0",
+  },
+  formGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  label: {
+    fontSize: "13px",
+    fontWeight: 600,
+    color: "#475569",
+  },
+  input: {
+    padding: "10px 12px",
+    borderRadius: "8px",
+    border: "1px solid #e2e8f0",
+    fontSize: "14px",
+    transition: "border-color 0.2s",
+    width: "100%",
+    boxSizing: "border-box",
+  },
+  genderOptions: {
+    display: "flex",
+    gap: "12px",
+  },
+  genderButton: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    padding: "10px",
+    borderRadius: "8px",
+    border: "1px solid #e2e8f0",
+    backgroundColor: "#fff",
+    fontSize: "14px",
+    fontWeight: 500,
+    color: "#64748b",
+    cursor: "pointer",
+    transition: "all 0.2s",
+  },
+  genderButtonActive: {
+    borderColor: "#3b82f6",
+    backgroundColor: "#eff6ff",
+    color: "#3b82f6",
+    fontWeight: 600,
+  },
+  divider: {
+    borderTop: "1px solid #e2e8f0",
+    margin: "8px 0",
+  },
+  visitsHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "12px",
+  },
+  sectionTitle: {
+    fontSize: "14px",
+    fontWeight: 700,
+    color: "#0f172a",
+    margin: 0,
+  },
+  addBtn: {
+    padding: "6px 12px",
+    backgroundColor: "#3b82f6",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  visitList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  visitCard: {
+    border: "1px solid #e2e8f0",
+    borderRadius: "8px",
+    padding: "12px",
+    backgroundColor: "#f8fafc",
+  },
+  visitCardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "10px",
+  },
+  visitLabel: {
+    fontSize: "13px",
+    fontWeight: 700,
+    color: "#0f172a",
+  },
+  removeBtn: {
+    background: "none",
+    border: "none",
+    color: "#ef4444",
+    cursor: "pointer",
+    fontSize: "12px",
+    fontWeight: 500,
+  },
+  row: {
+    display: "flex",
+    gap: "10px",
   },
   collapseBtn: {
     background: "none",
@@ -881,20 +1172,6 @@ const s: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: "6px",
   },
-  label: {
-    fontSize: "12px",
-    fontWeight: 600,
-    color: "#475569",
-  },
-  input: {
-    padding: "10px 12px",
-    borderRadius: "8px",
-    border: "1px solid #cbd5e1",
-    fontSize: "14px",
-    color: "#0f172a",
-    outline: "none",
-    backgroundColor: "#f8fafc",
-  },
   select: {
     padding: "10px 12px",
     borderRadius: "8px",
@@ -904,10 +1181,6 @@ const s: Record<string, React.CSSProperties> = {
     outline: "none",
     backgroundColor: "#f8fafc",
     cursor: "pointer",
-  },
-  row: {
-    display: "flex",
-    gap: "12px",
   },
   visitsDivider: {
     display: "flex",
@@ -1087,8 +1360,8 @@ const s: Record<string, React.CSSProperties> = {
   },
   table: {
     width: "100%",
-    borderCollapse: "collapse" as const,
-    textAlign: "left" as const,
+    borderCollapse: "collapse",
+    textAlign: "left",
     fontSize: "13px",
   },
   thRow: {
