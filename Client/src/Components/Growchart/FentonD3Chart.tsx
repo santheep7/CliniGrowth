@@ -252,6 +252,18 @@ export function FentonD3Chart({
       .attr("stroke", "#e2e8f0")
       .attr("stroke-width", 1);
 
+    // Vertical grid — every week
+    g.selectAll(".x-grid-weekly")
+      .data(d3.range(X_MIN, X_MAX + 1, 1))
+      .enter()
+      .append("line")
+      .attr("x1", (d) => xScale(d))
+      .attr("x2", (d) => xScale(d))
+      .attr("y1", 0)
+      .attr("y2", innerHeight)
+      .attr("stroke", "#cbd5e1")
+      .attr("stroke-width", 0.5);
+
     // Vertical grid — every 2 weeks (between monthly lines)
     g.selectAll(".x-grid-biweekly")
       .data(d3.range(X_MIN, X_MAX + 1, 2))
