@@ -500,17 +500,6 @@ export default function GrowchartDetail() {
     }
   }, [patientName, dob, gender, gaAtBirth, visits, activeMetric, genderView, chartType, setHomeFormWho]);
 
-  // When switching to WHO mode, load WHO context data into state
-  useEffect(() => {
-    if (chartType === "who") {
-      setPatientName(homeFormWho.patientName);
-      setDob(homeFormWho.dob);
-      setGender(homeFormWho.gender);
-      setGaAtBirth(homeFormWho.gaAtBirth);
-      setVisits(homeFormWho.visits);
-    }
-  }, [chartType, homeFormWho]);
-
   const pageRef      = useRef<HTMLDivElement>(null);
   const headerRef    = useRef<HTMLDivElement>(null);
   const formCardRef  = useRef<HTMLDivElement>(null);

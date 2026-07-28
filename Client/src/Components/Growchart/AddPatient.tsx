@@ -29,12 +29,25 @@ function calculateCorrectedGestationalWeek(gaAtBirth: string, chronologicalAge: 
 }
 
 // Custom input component with calendar icon
-function DateInputWithIcon({ value, onClick, onChange, visitId, visits, setVisits }: any) {
+// NOTE: react-datepicker clones this element and injects its own `onChange`
+// handler which expects a change EVENT, not a Date. That means we can never
+// rely on an `onChange` prop here to report a manually-typed date back up.
+// Instead we accept an explicit `onManualDateChange(date: Date | null)` prop
+// that WE control fully, and use that for both DOB and Visit date fields.
+function DateInputWithIcon({
+  value,
+  onClick,
+  onManualDateChange,
+}: {
+  value?: Date | string | null;
+  onClick?: () => void;
+  onManualDateChange: (date: Date | null) => void;
+}) {
   const [inputValue, setInputValue] = useState('');
   const [isDateSaved, setIsDateSaved] = useState(false);
 
   // Format Date object to DD/MM/YYYY string
-  const formatDate = (date: Date | null | string): string => {
+  const formatDate = (date: Date | null | string | undefined): string => {
     if (!date) return '';
     if (typeof date === 'string') return date;
     if (date instanceof Date) {
@@ -52,10 +65,33 @@ function DateInputWithIcon({ value, onClick, onChange, visitId, visits, setVisit
     setIsDateSaved(!!value);
   }, [value]);
 
+  const tryParseAndSave = (digits: string) => {
+    if (digits.length === 8) {
+      const day = parseInt(digits.slice(0, 2));
+      const month = parseInt(digits.slice(2, 4)) - 1; // JS months are 0-indexed
+      const year = parseInt(digits.slice(4, 8));
+
+      const parsedDate = new Date(year, month, day);
+      // Guard against invalid dates like 31/02/2024 silently rolling over
+      const isValidCalendarDate =
+        !isNaN(parsedDate.getTime()) &&
+        parsedDate.getDate() === day &&
+        parsedDate.getMonth() === month &&
+        parsedDate.getFullYear() === year;
+
+      if (isValidCalendarDate) {
+        onManualDateChange(parsedDate);
+        setIsDateSaved(true);
+        return;
+      }
+    }
+    setIsDateSaved(false);
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target.value;
     let digits = input.replace(/\D/g, ''); // Remove non-digits
-    
+
     // Auto-format as DD/MM/YYYY
     let formatted = '';
     if (digits.length >= 1) {
@@ -67,48 +103,17 @@ function DateInputWithIcon({ value, onClick, onChange, visitId, visits, setVisit
     if (digits.length >= 5) {
       formatted += '/' + digits.slice(4, 8);
     }
-    
+
     setInputValue(formatted);
     setIsDateSaved(false);
 
-    // Try to parse the complete date and update DatePicker immediately
-    if (digits.length === 8) {
-      const day = parseInt(digits.slice(0, 2));
-      const month = parseInt(digits.slice(2, 4)) - 1; // JS months are 0-indexed
-      const year = parseInt(digits.slice(4, 8));
-      
-      const parsedDate = new Date(year, month, day);
-      if (!isNaN(parsedDate.getTime())) {
-        // Update both DatePicker and visits array
-        onChange(parsedDate);
-        if (visitId && setVisits) {
-          const updated = visits.map((v: any) => v.id === visitId ? { ...v, date: parsedDate } : v);
-          setVisits(updated);
-        }
-        setIsDateSaved(true);
-      }
-    }
+    // Try to parse the complete date and update immediately
+    tryParseAndSave(digits);
   };
 
   const handleBlur = () => {
     // When the input loses focus, try to parse the current value
-    const digits = inputValue.replace(/\D/g, '');
-    if (digits.length === 8) {
-      const day = parseInt(digits.slice(0, 2));
-      const month = parseInt(digits.slice(2, 4)) - 1;
-      const year = parseInt(digits.slice(4, 8));
-      
-      const parsedDate = new Date(year, month, day);
-      if (!isNaN(parsedDate.getTime())) {
-        // Update both DatePicker and visits array
-        onChange(parsedDate);
-        if (visitId && setVisits) {
-          const updated = visits.map((v: any) => v.id === visitId ? { ...v, date: parsedDate } : v);
-          setVisits(updated);
-        }
-        setIsDateSaved(true);
-      }
-    }
+    tryParseAndSave(inputValue.replace(/\D/g, ''));
   };
 
   return (
@@ -151,7 +156,7 @@ function DateInputWithIcon({ value, onClick, onChange, visitId, visits, setVisit
       <div
         onClick={(e) => {
           e.stopPropagation();
-          onClick();
+          onClick && onClick();
         }}
         style={{
           position: 'absolute',
@@ -186,7 +191,7 @@ export default function AddPatient() {
   const location = useLocation();
   const { setPatient, patient, setPatientWho, patientWho } = useGrowchart();
   const isEditMode = location.pathname === "/edit-patient";
-  
+
   // Determine if we're editing for WHO or Fenton based on previous chart type
   const previousChartType = localStorage.getItem("gc_chartType") || "fenton";
   const isWhoMode = previousChartType === "who";
@@ -245,53 +250,36 @@ export default function AddPatient() {
     navigate(previousChartType === "who" ? "/who-detail" : "/");
   };
 
-  const handleSaveToDatabase = async () => {
-    const patientData = {
-      patientName: formData.patientName,
-      gender: formData.gender,
-      dob: formData.dob ? formData.dob.toISOString().split('T')[0] : "",
-      gaAtBirth: formData.gaAtBirth,
-      termWeek: formData.termWeek,
-      visits: visits.map(v => ({
-        date: v.date instanceof Date ? v.date.toISOString().split('T')[0] : "",
-        height: v.height,
-        weight: v.weight,
-        headCirc: v.headCirc
-      })),
-    };
-
-    try {
-      const response = await fetch('http://localhost:3001/api/patients', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(patientData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save to database');
-      }
-
-      const result = await response.json();
-      console.log("Saved to database:", result);
-      alert('Patient saved to database successfully!');
-      
-      // Also update the context with the saved data
-      setCurrentPatient({
-        patientName: formData.patientName,
-        gender: formData.gender,
-        dob: formData.dob ? formData.dob.toISOString().split('T')[0] : "",
-        gaAtBirth: formData.gaAtBirth,
-        visits: visits.map(v => ({
-          ...v,
-          date: v.date instanceof Date ? v.date.toISOString().split('T')[0] : ""
-        })),
-      });
-    } catch (error) {
-      console.error('Error saving to database:', error);
-      alert('Failed to save to database. Please try again.');
+  const handleReset = () => {
+    if (!window.confirm("Reset the form? All entered data will be cleared.")) {
+      return;
     }
+
+    // Clear any persisted growth-chart data from localStorage (e.g. "gc_chartType")
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith("gc_"))
+      .forEach((key) => localStorage.removeItem(key));
+
+    // Clear the saved patient in context too, so a stale record isn't
+    // picked back up on next visit/navigation
+    setCurrentPatient({
+      patientName: "",
+      gender: "male",
+      dob: "",
+      gaAtBirth: "",
+      visits: [],
+    });
+
+    setFormData({
+      patientName: "",
+      gender: "male",
+      dob: null,
+      gaAtBirth: "",
+      termWeek: 50,
+    });
+    setVisits([
+      { id: crypto.randomUUID(), date: null, height: "", weight: "", headCirc: "" }
+    ]);
   };
 
   return (
@@ -376,7 +364,13 @@ export default function AddPatient() {
               scrollableYearDropdown
               yearDropdownItemNumber={100}
               maxDate={new Date()}
-              customInput={<DateInputWithIcon />}
+              customInput={
+                <DateInputWithIcon
+                  onManualDateChange={(date: Date | null) =>
+                    setFormData((prev) => ({ ...prev, dob: date }))
+                  }
+                />
+              }
               required
             />
           </div>
@@ -444,7 +438,15 @@ export default function AddPatient() {
                     yearDropdownItemNumber={100}
                     minDate={formData.dob || undefined}
                     maxDate={new Date()}
-                    customInput={<DateInputWithIcon visitId={visit.id} visits={visits} setVisits={setVisits} />}
+                    customInput={
+                      <DateInputWithIcon
+                        onManualDateChange={(date: Date | null) => {
+                          setVisits((prevVisits) =>
+                            prevVisits.map(v => v.id === visit.id ? { ...v, date } : v)
+                          );
+                        }}
+                      />
+                    }
                   />
                   {visit.date && formData.dob && formData.gaAtBirth && (() => {
                     const chronologicalAge = calculateChronologicalAge(formData.dob, visit.date);
@@ -525,10 +527,10 @@ export default function AddPatient() {
             </button>
             <button
               type="button"
-              onClick={handleSaveToDatabase}
-              style={s.saveButton}
+              onClick={handleReset}
+              style={s.resetButton}
             >
-              Save to Database
+              Reset
             </button>
             <button type="submit" style={s.submitButton}>
               {isEditMode ? "Update Patient" : "Add Patient"}
@@ -721,15 +723,15 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     transition: "all 0.2s",
   },
-  saveButton: {
+  resetButton: {
     flex: 1,
     padding: "12px 24px",
     borderRadius: 8,
-    border: "none",
-    backgroundColor: "#10b981",
+    border: "1px solid #fca5a5",
+    backgroundColor: "#fff",
     fontSize: 14,
     fontWeight: 600,
-    color: "#fff",
+    color: "#ef4444",
     cursor: "pointer",
     transition: "all 0.2s",
   },

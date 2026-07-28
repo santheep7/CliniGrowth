@@ -1032,9 +1032,15 @@ export default function GrowChart() {
   const plotBtnRef   = useRef<HTMLButtonElement>(null);
 
   // ── Page mount animation ────────────────────────────────────────────────────
+  // NOTE: only handles the "no patient plotted yet" mount case. When a patient
+  // is already plotted, the "Chart card reveal" effect below owns the opacity
+  // animation instead — previously both effects animated chartCardRef's
+  // opacity on the same navigation, and GSAP's default overwrite behavior
+  // would kill the first tween and snap opacity back down mid-animation,
+  // causing a visible brightness flash/dip right after "View Chart" is clicked.
   useEffect(() => {
     const ctx = gsap.context(() => {
-      if (chartCardRef.current) {
+      if (chartCardRef.current && !plotted) {
         gsap.from(chartCardRef.current, { x: 40, opacity: 0, duration: 0.7, ease: "power3.out" });
       }
     }, pageRef);
