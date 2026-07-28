@@ -499,7 +499,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
                     ? new Date(visit.date).toLocaleDateString("en-GB", {
                         day: "2-digit",
                         month: "short",
-                        year: "2-digit",
+                        year: "numeric",
                       })
                     : "No date";
                   const markedItems = localMarks[visit.id] || new Set<number>();
@@ -649,7 +649,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
               ? new Date(visit.date).toLocaleDateString("en-GB", {
                   day: "2-digit",
                   month: "short",
-                  year: "2-digit",
+                  year: "numeric",
                 })
               : "No date";
             const buttonColor = (isSaved && !isDraggingThis) ? "#111827" : "#ef4444";
@@ -818,7 +818,7 @@ export default function TDSC3yrs({ patientName, items = TDSC_ITEMS, onChartChang
               ? new Date(visit.date).toLocaleDateString("en-GB", {
                   day: "2-digit",
                   month: "short",
-                  year: "2-digit",
+                  year: "numeric",
                 })
               : "No date";
             const labelColor = isActive ? "#10b981" : isSaved ? "#3b82f6" : "#64748b";
